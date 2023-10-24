@@ -190,12 +190,13 @@ for step in range(total_steps):
         img_grad = gradient(model_output, coords)
         img_laplacian = laplace(model_output, coords)
 
-        fig, axes = plt.subplots(1,3, figsize=(18,6))
-        axes[0].imshow(model_output.cpu().view(resolution,resolution).detach().numpy())
-        axes[1].imshow(img_grad.norm(dim=-1).cpu().view(resolution,resolution).detach().numpy())
-        axes[2].imshow(img_laplacian.cpu().view(resolution,resolution).detach().numpy())
-        plt.show()
 
     optim.zero_grad()
     loss.backward()
     optim.step()
+
+fig, axes = plt.subplots(1,3, figsize=(18,6))
+axes[0].imshow(model_output.cpu().view(resolution,resolution).detach().numpy())
+axes[1].imshow(img_grad.norm(dim=-1).cpu().view(resolution,resolution).detach().numpy())
+axes[2].imshow(img_laplacian.cpu().view(resolution,resolution).detach().numpy())
+plt.show()
