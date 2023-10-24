@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import time
 from collections import OrderedDict
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "garbage_collection_threshold:0.6,max_split_size_mb:30"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = ""
 
 def get_mgrid(sidelen, dim=2):
     '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
@@ -164,11 +164,12 @@ class ImageFitting(Dataset):
         if idx > 0: raise IndexError
             
         return self.coords, self.pixels
-    
-cameraman = ImageFitting(256)
+
+resolution = 128 
+cameraman = ImageFitting(resolution)
 dataloader = DataLoader(cameraman, batch_size=1, pin_memory=True, num_workers=0)
 
-img_siren = Siren(in_features=2, out_features=1, hidden_features=256, 
+img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution, 
                   hidden_layers=3, outermost_linear=True)
 img_siren.cuda()
 
@@ -190,9 +191,9 @@ for step in range(total_steps):
         img_laplacian = laplace(model_output, coords)
 
         fig, axes = plt.subplots(1,3, figsize=(18,6))
-        axes[0].imshow(model_output.cpu().view(256,256).detach().numpy())
-        axes[1].imshow(img_grad.norm(dim=-1).cpu().view(256,256).detach().numpy())
-        axes[2].imshow(img_laplacian.cpu().view(256,256).detach().numpy())
+        axes[0].imshow(model_output.cpu().view(resolution,resolution).detach().numpy())
+        axes[1].imshow(img_grad.norm(dim=-1).cpu().view(resolution,resolution).detach().numpy())
+        axes[2].imshow(img_laplacian.cpu().view(resolution,resolution).detach().numpy())
         plt.show()
 
     optim.zero_grad()
