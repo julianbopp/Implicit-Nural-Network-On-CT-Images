@@ -35,6 +35,7 @@ ax1.imshow(image, cmap=plt.cm.Greys_r)
 
 theta = np.linspace(0., 180., max(image.shape), endpoint=False)
 sinogram = radon(image, theta=theta)
+print(sinogram.shape)
 dx, dy = 0.5 * 180.0 / max(image.shape), 0.5 / sinogram.shape[0]
 ax2.set_title("Radon transform\n(Sinogram)")
 ax2.set_xlabel("Projection angle (deg)")
@@ -43,7 +44,9 @@ ax2.imshow(sinogram, cmap=plt.cm.Greys_r,
            extent=(-dx, 180.0 + dx, -dy, sinogram.shape[0] + dy),
            aspect='auto')
 
-ax3.imshow(observation_image,cmap=plt.cm.Greys_r)
+ax3.imshow(observation_image, cmap=plt.cm.Greys_r,
+           extent=(-dx, 180.0 + dx, -dy, sinogram.shape[0] + dy),
+           aspect='auto')
 ax3.set_title("observation")
 fig.tight_layout()
 
