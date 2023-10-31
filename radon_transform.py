@@ -8,22 +8,19 @@ import math
 def radon_transform(image: torch.Tensor, theta: int):
     # Transform image to Grayscale with single channel
     image = v2.Grayscale(1)(image)
-    height, width = image.shape
 
-    # Rotate image once to be able to save maximal image size (due to padding with 0's)
-    rotation = v2.Compose([
-        v2.RandomRotation((45,45), expand=True)
-    ])
+    # Rotate image once by 45 to create padding with 0's
+    image = v2.RandomRotation((45, 45), expand=True)(image)
+    image = v2.RandomRotation((-45,-45), expand=False)(image)
 
-    pad_size = rotation(image).shape[1] - height
+    _, height, width = image.shape
+    sinogram = np.zeros([height, theta])
 
-    image = v2.Pad(pad_size)(image)
-    
-    sinogram = np.zeros([pad_size + height, theta])
-    print(sinogram.shape)
+    # Rotate by angle and sum in one dimension
     for i in range(theta):
-        rotated_image = v2.RandomRotation((i,i), expand=True)(image)
-        sinogram[i,:] = torch.sum(rotated_image)
+        rotated_image = v2.RandomRotation((i,i), expand=False)(image)
+        sum = torch.sum(rotated_image, 1)
+        sinogram[:, i] = sum
 
     return sinogram
 
