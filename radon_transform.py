@@ -1,21 +1,31 @@
 import torch
-import math
+from torchvision.transforms import v2
+import typing
+import skimage
 import numpy as np
+import math
 
-def radon_transform(image, theta):
+def radon_transform(image: torch.Tensor, theta: int):
+    # Transform image to Grayscale with single channel
+    image = v2.Grayscale(1)(image)
+    height, width = image.shape
 
-    length, width = image.shape
-    diag_length = math.sqrt(length ** 2 + width ** 2)
-    lengthPad = math.ceil(diag_length - length)  + 2
-    widthPad = math.ceil(diag_length - width) + 2
-    image_padded = np.zeros(length + lengthPad, width + widthPad)
-    image_padded[math.ceil(lengthPad / 2) : (math.ceil(lengthPad / 2) + length - 1), math.ceil(widthPad / 2) : (math.ceil(widthPad / 2) + width - 1)] = image
+    # Rotate image once to be able to save maximal image size (due to padding with 0's)
+    rotation = v2.Compose([
+        v2.RandomRotation((45,45), expand=True)
+    ])
 
-    n = theta.size
-    transform = np.zeros(image_padded.shape[1], n)
+    pad_size = rotation(image).shape[1] - height
 
-    for i in range(n):
-        tmpimg = 
+    image = v2.Pad(pad_size)(image)
+    
+    sinogram = np.zeros([pad_size + height, theta])
+    print(sinogram.shape)
+    for i in range(theta):
+        rotated_image = v2.RandomRotation((i,i), expand=True)(image)
+        sinogram[i,:] = torch.sum(rotated_image)
+
+    return sinogram
 
 
 
