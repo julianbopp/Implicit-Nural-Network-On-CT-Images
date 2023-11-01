@@ -2,11 +2,13 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+from torchmetrics.audio import SignalNoiseRatio
 import os
 from dival import get_standard_dataset
 from dival import util
 
 from PIL import Image
+from torchvision import transforms 
 from torchvision.transforms import Resize, Compose, ToTensor, Normalize
 import numpy as np
 import skimage
@@ -14,6 +16,7 @@ import matplotlib.pyplot as plt
 
 import time
 from collections import OrderedDict
+from radon_transform import radon_transform
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = ""
 
@@ -177,41 +180,44 @@ class ImageFitting(Dataset):
             
         return self.coords, self.pixels
 
-resolution = 128     
-cameraman = ImageFitting(resolution, get_cameraman_tensor(resolution))
-dataloader = DataLoader(cameraman, batch_size=1, pin_memory=True, num_workers=0)
+resolution = 120 
+#cameraman = ImageFitting(resolution, get_cameraman_tensor(resolution))
+#dataloader = DataLoader(cameraman, batch_size=1, pin_memory=True, num_workers=0)
 
 dataset = get_standard_dataset('lodopab')
 image, ground_truth = dataset.get_sample(0)
-ground_truth = get_ct_tensor(resolution, np.asarray(ground_truth))
+ground_truth = get_ct_tensor((resolution, 180), np.asarray(image))
 lodopab = ImageFitting(resolution, ground_truth)
 dataloader = DataLoader(lodopab, batch_size=1, pin_memory=True, num_workers=0)
-
 
 img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution, 
                   hidden_layers=3, outermost_linear=True)
 img_siren.cuda()
 
 total_steps = 500 # Since the whole image is our dataset, this just means 500 gradient descent steps.
-steps_til_summary = 50 
+steps_til_summary = 50
 
 optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
 
 model_input, ground_truth = next(iter(dataloader))
+ground_truth = ground_truth.view(1,resolution,-1)
 model_input, ground_truth = model_input.cuda(), ground_truth.cuda()
-
 for step in range(total_steps):
-    model_output, coords = img_siren(model_input)    
-    loss = ((model_output - ground_truth)**2).mean()
+    print(f"step: {step}")
+    model_output, coords = img_siren(model_input)
+    model_output = radon_transform(model_output.view(1, resolution, resolution), 180)
+    model_output = model_output.cuda()
+    loss = ((model_output - ground_truth) ** 2).mean()
     
     if not (step + 1) % steps_til_summary:
         print("Step %d, Total loss %0.6f" % (step, loss))
-        img_grad = gradient(model_output, coords)
-        img_laplacian = laplace(model_output, coords)
-        fig, axes = plt.subplots(1,3, figsize=(18,6))
-        axes[0].imshow(model_output.cpu().view(resolution,resolution).detach().numpy())
-        axes[1].imshow(img_grad.norm(dim=-1).cpu().view(resolution,resolution).detach().numpy())
-        axes[2].imshow(img_laplacian.cpu().view(resolution,resolution).detach().numpy())
+        #img_grad = gradient(model_output, coords)
+        #img_laplacian = laplace(model_output, coords)
+        fig, axes = plt.subplots(1,2, figsize=(18,6))
+        axes[0].imshow(model_output.cpu().view(-1,180).detach().numpy())
+        axes[1].imshow(ground_truth.cpu().view(-1,180).detach().numpy())
+        #axes[1].imshow(img_grad.norm(dim=-1).cpu().view(resolution,resolution).detach().numpy())
+        #axes[2].imshow(img_laplacian.cpu().view(resolution,resolution).detach().numpy())
         plt.show()
 
 

@@ -12,7 +12,6 @@ def radon_transform(image: torch.Tensor, theta: int):
     # Rotate image once by 45 to create padding with 0's
     image = v2.RandomRotation((45, 45), expand=True)(image)
     image = v2.RandomRotation((-45,-45), expand=False)(image)
-    print(image.shape)
 
     _, height, width = image.shape
     sinogram = torch.zeros([1, height, theta])
