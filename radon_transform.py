@@ -12,15 +12,16 @@ def radon_transform(image: torch.Tensor, theta: int):
     # Rotate image once by 45 to create padding with 0's
     image = v2.RandomRotation((45, 45), expand=True)(image)
     image = v2.RandomRotation((-45,-45), expand=False)(image)
+    print(image.shape)
 
     _, height, width = image.shape
-    sinogram = np.zeros([height, theta])
+    sinogram = torch.zeros([1, height, theta])
 
     # Rotate by angle and sum in one dimension
     for i in range(theta):
         rotated_image = v2.RandomRotation((i,i), expand=False)(image)
         sum = torch.sum(rotated_image, 1)
-        sinogram[:, i] = sum
+        sinogram[0][:, i] = sum
 
     return sinogram
 
