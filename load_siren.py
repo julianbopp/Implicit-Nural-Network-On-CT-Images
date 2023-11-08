@@ -12,12 +12,16 @@ import numpy as np
 
 from siren import Siren
 from lodopabimage import LodopabImage
+CUDA = False
 
 resolution = 256
 img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution,
                   hidden_layers=3, outermost_linear=True)
 
-img_siren.load_state_dict(torch.load('img_siren.pt'))
+if CUDA:
+    img_siren.load_state_dict(torch.load('img_siren.pt'))
+else:
+    img_siren.load_state_dict(torch.load('img_siren.pt', map_location=torch.device('cpu')))
 img_siren.eval()
 
 dataset = LodopabImage(resolution)
