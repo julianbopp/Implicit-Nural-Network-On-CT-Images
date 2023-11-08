@@ -40,7 +40,7 @@ image = rescale(ds_arr[0,:,:], scale=0.4, mode='reflect', channel_axis=None)
 observation_image = rescale(ds_arr_test[0,:,:], scale=0.4, mode='reflect', channel_axis=None)
 
 theta = range(180)
-ground_truth = radon(image)
+ground_truth = radon(image, circle=False)
 print(ground_truth.shape)
 
 #transform = transforms.Compose([transforms.ToImageTensor(), transforms.ConvertImageDtype()])
