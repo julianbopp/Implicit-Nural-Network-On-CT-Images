@@ -46,15 +46,5 @@ class LodopabImage(Dataset):
         mgrid = mgrid.reshape(-1, dim)
         return mgrid
 
-
-test = LodopabImage(128)
-dataloader = DataLoader(test, batch_size=1, shuffle=False)
-
-for i in range(1):
-    model_input, ground_truth = next(iter(dataloader))
-    print("------------")
-    print("model_input")
-    print(model_input)
-    print("ground_truth")
-    print(ground_truth)
-    print("------------")
+    def get_2d_np(self):
+        return self.image.detach().numpy()[0,:,:]
