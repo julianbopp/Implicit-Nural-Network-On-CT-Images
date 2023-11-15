@@ -35,27 +35,42 @@ def radon_transform(image: torch.Tensor, theta=None):
     return sinogram
 
 
-def batch_radon(t, theta=None, f, L):
+def batch_radon(t, f, L, theta=None):
     """
-    t : List of points on radon projection plane
+    t : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree
-    f : function to sample from (support on [-1, 1]
+    f : function to sample from (support on [-1, 1])
     L : number of sample points on one Line
     """
-
+    pi = 3.14159
     if theta is None:
-        theta = np.arange(180)
+        theta = np.arange(0, pi, step=pi / 180)
+        theta = -theta
     else:
         theta = np.arange(theta[0], theta[1])
 
     # line equation:
-    # (x(z),y(z)) = ( z sin(theta) + s cos(theta), -z cos(theta) + s sin(theta)
+    # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
+    z = torch.linspace(-(0.5+1.414)/2, (0.5+1.414)/2, steps=L)
 
-    sample_grid =
-
+    # sample_grid =
+    output = torch.zeros(len(theta), len(t))
+    index = 0
     for i in theta:
+        i = torch.tensor(i)
+        linex = (t * torch.sin(i)).unsqueeze(0) + (z * torch.cos(i)).unsqueeze(1)
+        liney = (-t * torch.cos(i)).unsqueeze(0) + (z * torch.sin(i)).unsqueeze(1)
 
-        pass
+        linex = linex.unsqueeze(0)
+        liney = liney.unsqueeze(0)
 
+        line = torch.cat((linex, liney), 0)
+        line = torch.transpose(line, 0, 2)
+        # line = torch.transpose(line,0,1)
+        f_out, _ = f(line)
+        f_sum = torch.sum(f_out, 1)
+        output[index, :] = f_sum.squeeze(1)
 
+        index = index + 1
 
+    return torch.flip(output, (0,))
