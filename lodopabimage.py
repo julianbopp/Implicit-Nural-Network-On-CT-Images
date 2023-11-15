@@ -15,7 +15,7 @@ class LodopabImage(Dataset):
 
         self.transform = transforms.Compose([
             transforms.Resize(resolution),
-            transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
+            #transforms.Normalize(torch.Tensor([1]), torch.Tensor([1]))
         ])
 
         self.image = self.transform(self.image)
