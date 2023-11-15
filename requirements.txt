@@ -1,0 +1,7 @@
+torch
+torchvision
+torchaudio
+torchmetrics
+h5py
+scikit-image
+matplotlib
