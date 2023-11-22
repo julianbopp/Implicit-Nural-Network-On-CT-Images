@@ -1,12 +1,12 @@
 import torch
 from torch.utils.data import DataLoader
 from torchmetrics.audio import SignalNoiseRatio
-from siren import Siren
-from lodopabimage import LodopabImage
+from NeuralNetworks.siren import Siren
+from DatasetClasses.lodopabimage import LodopabImage
 from skimage.transform import radon, iradon
 import numpy as np
 import matplotlib.pyplot as plt
-from radon_transform import radon_transform
+from RadonTransform.radon_transform import radon_transform
 
 CUDA = True
 resolution = 256
@@ -79,4 +79,4 @@ def train():
     plt.show()
 
 train()
-torch.save(img_siren.state_dict(), "img_siren.pt")
+torch.save(img_siren.state_dict(), "../img_siren.pt")

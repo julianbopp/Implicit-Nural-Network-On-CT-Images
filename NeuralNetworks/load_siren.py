@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchmetrics.audio import SignalNoiseRatio
 
-from radon_transform import radon_transform
+from RadonTransform.radon_transform import radon_transform
 
 from skimage.transform import radon, iradon
 
@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from siren import Siren
-from lodopabimage import LodopabImage
+from NeuralNetworks.siren import Siren
+from DatasetClasses.lodopabimage import LodopabImage
 CUDA = False
 
 resolution = 256
@@ -19,9 +19,9 @@ img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution,
                   hidden_layers=3, outermost_linear=True)
 
 if CUDA:
-    img_siren.load_state_dict(torch.load('img_siren.pt'))
+    img_siren.load_state_dict(torch.load('../img_siren.pt'))
 else:
-    img_siren.load_state_dict(torch.load('img_siren.pt', map_location=torch.device('cpu')))
+    img_siren.load_state_dict(torch.load('../img_siren.pt', map_location=torch.device('cpu')))
 img_siren.eval()
 
 dataset = LodopabImage(resolution)
