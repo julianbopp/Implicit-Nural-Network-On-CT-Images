@@ -10,7 +10,7 @@ class LodopabImage(Dataset):
     """Loads a single image from the LoDoPaB-CT dataset and makes pixel batching possible"""
 
     def __init__(self, resolution, set="ground_truth_train", pos1='000', pos2=0):
-        self.image_path = f'dataset/{set}/{set}_{pos1}.hdf5'
+        self.image_path = f'../dataset/{set}/{set}_{pos1}.hdf5'
         self.image = from_numpy(self.read_hdf5(self.image_path))[pos2, :, :].unsqueeze(0)
 
         self.transform = transforms.Compose([
