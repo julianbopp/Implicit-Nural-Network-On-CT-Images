@@ -1,7 +1,9 @@
-torch
-torchvision
+torch~=2.1.1+cu118
+torchvision~=0.16.1+cu118
 torchaudio
-torchmetrics
-h5py
-scikit-image
-matplotlib
+torchmetrics~=1.2.0
+h5py~=3.10.0
+scikit-image~=0.22.0
+matplotlib~=3.8.1
+numpy~=1.24.1
+Pillow~=9.3.0
