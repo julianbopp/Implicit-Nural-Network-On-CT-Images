@@ -13,7 +13,7 @@ class CoordSet(Dataset):
         return len(self.coords)
 
     def __getitem__(self, idx):
-        return self.coords[idx]
+        return self.coords[idx], idx
 
 class AngleSet(Dataset):
     def __init__(self, L):
@@ -25,4 +25,4 @@ class AngleSet(Dataset):
         return len(self.angles)
 
     def __getitem__(self, idx):
-        return self.angles[idx]
+        return self.angles[idx], idx

@@ -20,10 +20,10 @@ print(input.shape)
 print(img_siren(input))
 
 #radon_batch_output = batch_radon(torch.linspace(-(0.5+1.414)/2,(0.5+1.414)/2,steps=256),img_siren, 30)
-radon_batch_output = batch_radon(torch.linspace(-1,1,steps=256),img_siren, 30)
+radon_batch_output = batch_radon(torch.linspace(-1,1,steps=256),img_siren, 30, torch.linspace(0, 3.14159,180))
 print(radon_batch_output)
 print(radon_batch_output.shape)
-plt.imshow(radon_batch_output.detach().numpy().T)
+plt.imshow(radon_batch_output.detach().numpy())
 plt.show()
 
 dataset = LodopabImage(resolution)

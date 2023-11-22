@@ -35,9 +35,9 @@ def radon_transform(image: torch.Tensor, theta=None):
     return sinogram
 
 
-def batch_radon(t, f, L, theta=None):
+def batch_radon(z, f, L, theta=None, CUDA=False):
     """
-    t : tensor of points on radon projection plane
+    z : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree
     f : function to sample from (support on [-1, 1])
     L : number of sample points on one Line
@@ -49,28 +49,33 @@ def batch_radon(t, f, L, theta=None):
 
     # line equation:
     # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
-    z = torch.linspace(-1.414,1.414, steps=L)
+    t = torch.linspace(-1.414,1.414, steps=L)
+
 
     # sample_grid =
-    output = torch.zeros(len(theta), len(t))
+    output = torch.zeros(len(z), len(theta))
     index = 0
+    if CUDA:
+        t = t.cuda()
+        z = z.cuda()
+        output = output.cuda()
     for i in theta:
-        i = torch.tensor(i)
-        linex = (t * torch.sin(i)).unsqueeze(0) + (z * torch.cos(i)).unsqueeze(1)
-        liney = (-t * torch.cos(i)).unsqueeze(0) + (z * torch.sin(i)).unsqueeze(1)
+        i = i + pi/2
+        linex = (t * torch.sin(i)).unsqueeze(1) + (z * torch.cos(i)).unsqueeze(0)
+        liney = (-t * torch.cos(i)).unsqueeze(1) + (z * torch.sin(i)).unsqueeze(0)
 
         linex = linex.unsqueeze(0)
         liney = liney.unsqueeze(0)
 
         line = torch.cat((linex, liney), 0)
-        mask = torch.norm(line,dim=0) <= 1
+        mask = torch.norm(line,dim=0) < 1
         line = torch.transpose(line, 0, 2)
         # line = torch.transpose(line,0,1)
         f_out, _ = f(line)
         f_out = f_out.squeeze(2) * mask.T
         f_sum = torch.sum(f_out, 1)
-        output[index, :] = f_sum
+        output[:, index] = f_sum
 
         index = index + 1
-
-    return torch.flip(output, (0,))
+    return output
+    #return torch.flip(output, (0,))
