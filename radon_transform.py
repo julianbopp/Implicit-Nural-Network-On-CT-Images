@@ -51,11 +51,10 @@ def batch_radon(t, f, L, theta=None):
 
     # line equation:
     # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
-    #z = torch.linspace(-(0.5+1.414)/2, (0.5+1.414)/2, steps=L)
     z = torch.linspace(-1.414,1.414, steps=L)
 
     # sample_grid =
-    output = np.zeros([len(theta), len(t)])
+    output = torch.zeros(len(theta), len(t))
     index = 0
     for i in theta:
         i = torch.tensor(i)
@@ -72,9 +71,8 @@ def batch_radon(t, f, L, theta=None):
         f_out, _ = f(line)
         f_out = f_out.squeeze(2) * mask.T
         f_sum = torch.sum(f_out, 1)
-        output[index, :] = f_sum.detach().numpy()
+        output[index, :] = f_sum
 
         index = index + 1
 
-    #return torch.flip(output, (0,))
-    return np.flip(output,0)
+    return torch.flip(output, (0,))
