@@ -46,8 +46,6 @@ def batch_radon(t, f, L, theta=None):
     if theta is None:
         theta = np.arange(0, pi, step=pi / 180)
         theta = -theta
-    else:
-        theta = np.arange(theta[0], theta[1])
 
     # line equation:
     # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
