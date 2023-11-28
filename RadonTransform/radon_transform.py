@@ -49,11 +49,11 @@ def batch_radon(z, f, L, theta=None, CUDA=False):
 
     # line equation:
     # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
-    t = torch.linspace(-1.414,1.414, steps=L)
-
+    t = torch.linspace(-1.414,1.414, steps=L).unsqueeze(1)
 
     # sample_grid =
     output = torch.zeros(len(z), len(theta))
+    z = z.unsqueeze(0)
     index = 0
     if CUDA:
         t = t.cuda()
@@ -61,8 +61,8 @@ def batch_radon(z, f, L, theta=None, CUDA=False):
         output = output.cuda()
     for i in theta:
         i = i + pi/2
-        linex = (t * torch.sin(i)).unsqueeze(1) + (z * torch.cos(i)).unsqueeze(0)
-        liney = (-t * torch.cos(i)).unsqueeze(1) + (z * torch.sin(i)).unsqueeze(0)
+        linex = (t * torch.sin(i)) +(z * torch.cos(i))
+        liney = (-t * torch.cos(i)) + (z * torch.sin(i))
 
         linex = linex.unsqueeze(0)
         liney = liney.unsqueeze(0)
@@ -76,6 +76,9 @@ def batch_radon(z, f, L, theta=None, CUDA=False):
         f_sum = torch.sum(f_out, 1)
         output[:, index] = f_sum
 
+        del linex, liney, line, mask, f_out, f_sum
+
         index = index + 1
+
     return output
     #return torch.flip(output, (0,))
