@@ -1,3 +1,4 @@
+import math
 import torch
 from skimage.transform import radon
 from torch.utils.data import DataLoader
@@ -9,7 +10,8 @@ from RadonTransform.radon_transform import batch_radon
 
 CUDA = torch.cuda.is_available()
 
-RESOLUTION = 64
+RESOLUTION = 256
+CIRCLE = False
 img_siren = Siren(in_features=2, out_features=1, hidden_features=RESOLUTION,
                   hidden_layers=3, outermost_linear=True)
 
@@ -23,22 +25,24 @@ lodopabLoader = DataLoader(lodopabImage, batch_size=lodopabImage.__len__())
 # Get ground truth radon image
 _, ground_truth = next(iter(lodopabLoader))
 ground_truth_image = ground_truth.reshape(RESOLUTION,RESOLUTION).detach().numpy()
-ground_truth_radon = radon(ground_truth_image, circle=True)
+ground_truth_radon = radon(ground_truth_image, circle=CIRCLE)
 ground_truth = torch.from_numpy(ground_truth_radon)
 
-angleSet = AngleSet(180)
+angleSet = AngleSet(180, rad=False)
 if CUDA:
     angleSet.angles = angleSet.angles.cuda()
-angleLoader = DataLoader(angleSet, batch_size=10, shuffle=True)
+angleLoader = DataLoader(angleSet, batch_size=15, shuffle=True)
 
-coordSet = CoordSet(RESOLUTION,True)
+coordSet = CoordSet(int(RESOLUTION*math.sqrt(2)),circle=CIRCLE)
 if CUDA:
     coordSet.coords = coordSet.coords.cuda()
-coordLoader = DataLoader(coordSet, batch_size=100, shuffle=True)
+coordLoader = DataLoader(coordSet, batch_size=60, shuffle=True)
 coordIter = iter(coordLoader)
 
 training_steps = 100
-sample_points = 300
+sample_points = RESOLUTION
+if CIRCLE:
+    sample_points = round(RESOLUTION * math.sqrt(2))
 
 if CUDA:
     ground_truth = ground_truth.cuda()
@@ -46,13 +50,19 @@ if CUDA:
 step = 0
 loss_total = []
 for step in range(training_steps):
-    print(f"angle_step = {step}")
+    print(f"training step = {step}")
     for angle, angle_idx in angleLoader:
         for coords, coords_idx in coordLoader:
             optim.zero_grad()
             radon_output = batch_radon(coords, img_siren, sample_points, theta=angle, CUDA=CUDA)
+            # Reshape coordIdx and angleIdx
+            coordIdx_unsq = coords_idx.unsqueeze(1)  # shape [256, 1]
+            angleIdx_unsq = angle_idx.unsqueeze(0)  # shape [1, 10]
 
-            loss = ((radon_output - ground_truth[coords_idx,:][:,angle_idx]) ** 2).mean()
+            # Create a grid of indices
+            coordIdx_grid, angleIdx_grid = torch.meshgrid(coordIdx_unsq[:, 0], angleIdx_unsq[0, :], indexing='ij')
+
+            loss = ((radon_output - ground_truth[coordIdx_grid, angleIdx_grid]) ** 2).mean()
             loss_total.append(loss.item())
 
             loss.backward()

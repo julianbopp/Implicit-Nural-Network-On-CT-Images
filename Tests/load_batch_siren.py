@@ -7,10 +7,10 @@ from torchmetrics.audio import SignalNoiseRatio
 
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.siren import Siren
-from RadonTransform.radon_transform import radon_transform
+from RadonTransform.radon_transform import radon_transform, batch_radon
 
 CUDA = torch.cuda.is_available()
-resolution = 64
+resolution = 256
 img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution,
                   hidden_layers=3, outermost_linear=True)
 
@@ -38,17 +38,17 @@ fig, axes = plt.subplots(2, 2, figsize=(18, 6))
 axes[0][0].set_title("SIREN Radon")
 axes[0][0].imshow(model_output.cpu().view(-1, 180).detach().numpy())
 
-axes[0][1].set_title("SIREN Inv Radon")
+axes[0][1].set_title("SIREN output")
 axes[0][1].imshow(model_output_orig.detach().numpy())
 
 axes[1][0].set_title("Ground Truth Radon")
 axes[1][0].imshow(ground_truth_radon)
 
-axes[1][1].set_title("Ground Truth Inverse Radon")
-axes[1][1].imshow(iradon(ground_truth_radon, circle=False))
+axes[1][1].set_title("Ground Truth Image")
+axes[1][1].imshow(ground_truth_image)
 
 
 snr = SignalNoiseRatio()
-print(snr(model_output_orig, torch.from_numpy(iradon(ground_truth_radon, circle=False))))
+print(snr(model_output_orig, torch.from_numpy(ground_truth_image)))
 
 plt.show()

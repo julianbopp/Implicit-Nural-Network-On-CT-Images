@@ -1,25 +1,40 @@
+import numpy as np
 import torch
 from skimage.transform import radon
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-import NeuralNetworks.load_siren
+from torchmetrics.audio import SignalNoiseRatio
+
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
-from RadonTransform.radon_transform import batch_radon
+from NeuralNetworks.siren import Siren
+from RadonTransform.radon_transform import batch_radon, radon_transform, batch_radon2
 
-RESOLUTION = 256
-CUDA = True
+CUDA = torch.cuda.is_available()
+resolution = 256
+img_siren = Siren(in_features=2, out_features=1, hidden_features=resolution,
+                  hidden_layers=3, outermost_linear=True)
 
-img_siren = NeuralNetworks.load_siren.img_siren
-ground_truth = NeuralNetworks.load_siren.ground_truth
-radon_output = NeuralNetworks.load_siren.model_output
+if CUDA:
+    img_siren.load_state_dict(torch.load('../img_batch_siren.pt'))
+else:
+    img_siren.load_state_dict(torch.load('../img_batch_siren.pt', map_location=torch.device('cpu')))
+img_siren.eval()
 
-L = 362
-angleSet = AngleSet(180)
+
+L = 363
+angleSet = AngleSet(180, rad=False)
 coordSet = CoordSet(L, circle=False)
 
-angleLoader = DataLoader(angleSet, batch_size=10)
-coordLoader = DataLoader(coordSet, batch_size=10)
+angleLoader = DataLoader(angleSet, batch_size=3)
+coordLoader = DataLoader(coordSet, batch_size=256)
+
+lodopab = LodopabImage(resolution)
+mgrid = lodopab.get_mgrid(resolution)
+
+model_output, _ = img_siren(mgrid)
+model_output1 = radon(model_output.reshape(resolution,resolution).detach().numpy(),circle=False)
+model_output2 = radon_transform(model_output.reshape(1,resolution,resolution))
 
 batch_radon_output = torch.zeros(L, 180, requires_grad=False)
 if CUDA:
@@ -36,7 +51,16 @@ for angles, angleIdx in angleLoader:
         # Create a grid of indices
         coordIdx_grid, angleIdx_grid = torch.meshgrid(coordIdx_unsq[:, 0], angleIdx_unsq[0, :], indexing='ij')
 
-        batch_radon_output[coordIdx_grid, angleIdx_grid] = batch_radon(coords,img_siren,100,angles, CUDA=CUDA).detach()
+        batch_radon_output[coordIdx_grid, angleIdx_grid] = batch_radon(coords,img_siren,363,angles, CUDA=CUDA).detach()
 
+batch_radon_output[1:,:] = batch_radon_output[0:-1,:].clone()
 plt.imshow(batch_radon_output.cpu().detach().numpy())
 plt.show()
+plt.imshow(model_output1)
+plt.show()
+#plt.imshow(model_output2.view(363,180).detach().numpy())
+#plt.show()
+snr = SignalNoiseRatio()
+print(snr(batch_radon_output.cpu(), torch.from_numpy(model_output1)))
+#print(snr(batch_radon_output.cpu(), (model_output2.view(L,180))))
+#print(snr(torch.from_numpy(model_output1), (model_output2.view(L,180))))
