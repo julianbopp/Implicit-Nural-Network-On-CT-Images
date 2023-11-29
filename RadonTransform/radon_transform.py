@@ -42,43 +42,42 @@ def batch_radon(z, f, L, theta=None, CUDA=False):
     f : function to sample from (support on [-1, 1])
     L : number of sample points on one Line
     """
-    pi = 3.14159
-    if theta is None:
-        theta = np.arange(0, pi, step=pi / 180)
-        theta = -theta
-
-    # line equation:
-    # (x(t),y(t)) = ( t sin(theta) + z cos(theta), -t cos(theta) + z sin(theta)
-    t = torch.linspace(-1.414,1.414, steps=L).unsqueeze(1)
-
-    # sample_grid =
+    t = torch.linspace(-math.sqrt(2), math.sqrt(2), steps=L)
     output = torch.zeros(len(z), len(theta))
-    z = z.unsqueeze(0)
-    index = 0
+
     if CUDA:
         t = t.cuda()
         z = z.cuda()
         output = output.cuda()
-    for i in theta:
-        i = i + pi/2
-        linex = (t * torch.sin(i)) +(z * torch.cos(i))
-        liney = (-t * torch.cos(i)) + (z * torch.sin(i))
 
-        linex = linex.unsqueeze(0)
-        liney = liney.unsqueeze(0)
+    mgrid = torch.stack(torch.meshgrid(z, t, indexing='xy'))
+    mgrid = mgrid.permute(2,0,1)
 
-        line = torch.cat((linex, liney), 0)
-        mask = torch.norm(line,dim=0) < 1
-        line = torch.transpose(line, 0, 2)
-        # line = torch.transpose(line,0,1)
-        f_out, _ = f(line)
-        f_out = f_out.squeeze(2) * mask.T
-        f_sum = torch.sum(f_out, 1)
-        output[:, index] = f_sum
+    mgrid = mgrid.unsqueeze(1).expand(-1,len(theta),-1,-1)
 
-        del linex, liney, line, mask, f_out, f_sum
+    phi = torch.tensor((theta) * math.pi / 180 + math.pi/2)
 
-        index = index + 1
+    s = torch.sin(phi)
+    c = torch.cos(phi)
+
+    rot = torch.stack([torch.stack([c, -s]), torch.stack([s, c])])
+    rot = rot.permute(2,0,1)
+    if CUDA:
+        rot = rot.cuda()
+
+    #mgrid_rot = mgrid @ rot.t()
+    mgrid_rot = torch.matmul(rot, mgrid)
+
+    mgrid_rot = mgrid_rot.permute(0,1,3,2)
+    mask = (torch.linalg.norm(mgrid_rot, ord=float('inf'), dim=3) <= 1).unsqueeze(3)
+    f_out, _ = f(mgrid_rot)
+    f_out = mask * f_out
+
+    f_sum = torch.sum(f_out, dim=2)
+
+    output = f_sum[:,:,0]
 
     return output
-    #return torch.flip(output, (0,))
+
+    pass
+
