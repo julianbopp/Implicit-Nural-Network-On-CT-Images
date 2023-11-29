@@ -31,16 +31,16 @@ model_input, ground_truth = next(iter(dataloader))
 
 ground_truth = ground_truth.view(1,resolution,-1)
 ground_truth_image = ground_truth.reshape(resolution,resolution).detach().numpy()
-ground_truth_radon = radon(ground_truth_image, np.arange(180), circle=False)
+ground_truth_radon = radon(ground_truth_image, np.arange(180), circle=True)
 ground_truth = torch.from_numpy(ground_truth_radon).unsqueeze(0)
 
 model_output, coords = img_siren(model_input)
 model_output_orig = model_output.view(resolution,resolution)
-model_output = radon_transform(model_output.view(1, resolution, resolution), 180)
+model_output = radon(model_output.view(resolution, resolution).detach().numpy(), circle=True)
 
 fig, axes = plt.subplots(2, 2, figsize=(18, 6))
 axes[0][0].set_title("SIREN Radon")
-axes[0][0].imshow(model_output.cpu().view(-1, 180).detach().numpy())
+axes[0][0].imshow(model_output)
 
 axes[0][1].set_title("SIREN Inv Radon")
 axes[0][1].imshow(model_output_orig.detach().numpy())
@@ -53,6 +53,6 @@ axes[1][1].imshow(iradon(ground_truth_radon, circle=False))
 
 
 snr = SignalNoiseRatio()
-print(snr(model_output_orig, torch.from_numpy(iradon(ground_truth_radon, circle=False))))
+print(snr(model_output_orig, torch.from_numpy(iradon(ground_truth_radon, circle=True))))
 
 plt.show()
