@@ -1,18 +1,17 @@
 import h5py
-from torchvision.transforms import ToTensor
-from PIL import Image
-from torchvision import transforms
-from torchmetrics.audio import SignalNoiseRatio
 import matplotlib.pyplot as plt
-
+from PIL import Image
 from skimage.transform import radon, rescale
+from torchmetrics.audio import SignalNoiseRatio
+from torchvision import transforms
+from torchvision.transforms import ToTensor
 
 from RadonTransform.radon_transform import radon_transform
 
-
-
-ground_truth = h5py.File('dataset/ground_truth_train/ground_truth_train_000.hdf5','r')
-observation_test = h5py.File('dataset/observation_train/observation_train_000.hdf5','r')
+ground_truth = h5py.File("dataset/ground_truth_train/ground_truth_train_000.hdf5", "r")
+observation_test = h5py.File(
+    "dataset/observation_train/observation_train_000.hdf5", "r"
+)
 
 # read image from hdf5 file and store in numpy array
 with observation_test as f:
@@ -24,20 +23,22 @@ with ground_truth as f:
     group_key = list(f.keys())[0]
     data = list(f[group_key])
     ds_arr = f[group_key][()]
-#image = np.load(ds_arr).astype(np.float32)
+# image = np.load(ds_arr).astype(np.float32)
 
 print("shape ground_truth:")
 print(ds_arr.shape)
 print("shape observation:")
 print(ds_arr_test.shape)
-image = rescale(ds_arr[0,:,:], scale=0.4, mode='reflect', channel_axis=None)
-observation_image = rescale(ds_arr_test[0,:,:], scale=0.4, mode='reflect', channel_axis=None)
+image = rescale(ds_arr[0, :, :], scale=0.4, mode="reflect", channel_axis=None)
+observation_image = rescale(
+    ds_arr_test[0, :, :], scale=0.4, mode="reflect", channel_axis=None
+)
 
 theta = range(180)
 ground_truth = radon(image, circle=False)
 print(ground_truth.shape)
 
-#transform = transforms.Compose([transforms.ToImageTensor(), transforms.ConvertImageDtype()])
+# transform = transforms.Compose([transforms.ToImageTensor(), transforms.ConvertImageDtype()])
 image = Image.fromarray(image)
 image = transforms.PILToTensor()(image)
 print(type(image))
@@ -48,7 +49,7 @@ sinogram = radon_transform(image, alpha)
 print(sinogram.shape)
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4.5))
-ax1.imshow(sinogram.view(-1,alpha))
+ax1.imshow(sinogram.view(-1, alpha))
 ax2.imshow(ground_truth)
 snr = SignalNoiseRatio()
 

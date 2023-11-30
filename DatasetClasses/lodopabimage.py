@@ -1,22 +1,25 @@
-import torch
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
-from torch import from_numpy
 import h5py
+import torch
+from torch import from_numpy
+from torch.utils.data import Dataset
 from torchvision import transforms
 
 
 class LodopabImage(Dataset):
     """Loads a single image from the LoDoPaB-CT dataset and makes pixel batching possible"""
 
-    def __init__(self, resolution, set="ground_truth_train", pos1='000', pos2=0):
-        self.image_path = f'../dataset/{set}/{set}_{pos1}.hdf5'
-        self.image = from_numpy(self.read_hdf5(self.image_path))[pos2, :, :].unsqueeze(0)
+    def __init__(self, resolution, set="ground_truth_train", pos1="000", pos2=0):
+        self.image_path = f"../dataset/{set}/{set}_{pos1}.hdf5"
+        self.image = from_numpy(self.read_hdf5(self.image_path))[pos2, :, :].unsqueeze(
+            0
+        )
 
-        self.transform = transforms.Compose([
-            transforms.Resize(resolution),
-            #transforms.Normalize(torch.Tensor([1]), torch.Tensor([1]))
-        ])
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(resolution),
+                # transforms.Normalize(torch.Tensor([1]), torch.Tensor([1]))
+            ]
+        )
 
         self.image = self.transform(self.image)
 
@@ -30,7 +33,7 @@ class LodopabImage(Dataset):
         return self.coords[idx, :], self.pixels[idx]
 
     def read_hdf5(self, path):
-        file = h5py.File(path, 'r')
+        file = h5py.File(path, "r")
         with file as f:
             group_key = list(f.keys())[0]
             data = f[group_key][()]
@@ -38,13 +41,13 @@ class LodopabImage(Dataset):
         return data
 
     def get_mgrid(self, sidelen, dim=2):
-        '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
+        """Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
         sidelen: int
-        dim: int'''
+        dim: int"""
         tensors = tuple(dim * [torch.linspace(-1, 1, steps=sidelen)])
         mgrid = torch.stack(torch.meshgrid(*tensors), dim=-1)
         mgrid = mgrid.reshape(-1, dim)
         return mgrid
 
     def get_2d_np(self):
-        return self.image.detach().numpy()[0,:,:]
+        return self.image.detach().numpy()[0, :, :]

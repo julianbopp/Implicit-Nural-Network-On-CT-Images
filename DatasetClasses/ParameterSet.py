@@ -1,12 +1,12 @@
 import math
-import torch
-from torch.utils.data import Dataset
-from torch import linspace
 from torch import arange
+from torch import linspace
+from torch.utils.data import Dataset
+
 
 class CoordSet(Dataset):
     def __init__(self, L, circle=True):
-        """ L : amount of points on projection plane"""
+        """L : amount of points on projection plane"""
         if circle:
             self.coords = linspace(-1, 1, steps=L)
         else:
@@ -18,9 +18,10 @@ class CoordSet(Dataset):
     def __getitem__(self, idx):
         return self.coords[idx], idx
 
+
 class AngleSet(Dataset):
     def __init__(self, L, rad=True):
-        """ L : amount of angles between 0 and pi"""
+        """L : amount of angles between 0 and pi"""
         self.pi = math.pi
         if rad:
             self.angles = linspace(0, self.pi, steps=L)
