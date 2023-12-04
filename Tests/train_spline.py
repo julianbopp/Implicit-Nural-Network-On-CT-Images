@@ -1,12 +1,11 @@
 import math
-
 import torch
 from skimage.transform import radon
 from torch.utils.data import DataLoader
 
-from NeuralNetworks.spline import SplineNetwork
-from DatasetClasses.lodopabimage import LodopabImage
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
+from DatasetClasses.lodopabimage import LodopabImage
+from NeuralNetworks.spline import SplineNetwork
 from RadonTransform.radon_transform import batch_radon
 
 N = 32
@@ -15,7 +14,7 @@ spline_network = SplineNetwork(N)
 lodopabSet = LodopabImage(N)
 lodopabLoader = DataLoader(lodopabSet, batch_size=lodopabSet.__len__())
 _, lodopabImage = next(iter(lodopabLoader))
-ground_truth_image = lodopabImage.reshape(N,N).detach().numpy()
+ground_truth_image = lodopabImage.reshape(N, N).detach().numpy()
 ground_truth_radon = radon(ground_truth_image, circle=False)
 ground_truth = torch.from_numpy(ground_truth_radon)
 
@@ -38,7 +37,9 @@ for step in range(training_steps):
         for coords, coords_idx in coordLoader:
             optim.zero_grad()
 
-            radon_output = batch_radon(coords, spline_network, sample_points, theta=angle)
+            radon_output = batch_radon(
+                coords, spline_network, sample_points, theta=angle
+            )
 
             # Reshape coordIdx and angleIdx
             coordIdx_unsq = coords_idx.unsqueeze(1)  # shape [256, 1]
@@ -50,7 +51,7 @@ for step in range(training_steps):
             )
 
             loss = (
-                    (radon_output - ground_truth[coordIdx_grid, angleIdx_grid]) ** 2
+                (radon_output - ground_truth[coordIdx_grid, angleIdx_grid]) ** 2
             ).mean()
             loss_total.append(loss.item())
 
@@ -58,5 +59,3 @@ for step in range(training_steps):
             optim.step()
 
     print(torch.tensor(loss_total[-180 * coordSet.__len__() :]).mean().item())
-
-
