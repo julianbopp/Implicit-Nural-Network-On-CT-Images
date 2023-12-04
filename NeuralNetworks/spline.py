@@ -26,7 +26,7 @@ class SplineNetwork(nn.Module):
         super().__init__()
 
         self.N = N
-        self.weights = 1 / 9 * torch.ones(N, N, requires_grad=True)
+        self.weights = torch.ones(N, N, requires_grad=True)
         self.weights = self.weights.reshape(-1)
         self.weights = nn.Parameter(self.weights)
 
@@ -109,3 +109,5 @@ model = SplineNetwork(n).to(device)
 X = torch.tensor([[1.0, 1.0], [-1.0, -1.0], [0.0, 0.0]])
 
 print(model.forward(X))
+
+
