@@ -26,7 +26,7 @@ class SplineNetwork(nn.Module):
         super().__init__()
 
         self.N = N
-        self.weights = torch.ones(N, N, requires_grad=True)
+        self.weights = 1 / 9 * torch.ones(N, N, requires_grad=True)
         self.weights = self.weights.reshape(-1)
         self.weights = nn.Parameter(self.weights)
 
@@ -39,6 +39,12 @@ class SplineNetwork(nn.Module):
         :return: cubic interpolation function: sum w_i conv(||x-X||/h), shape (batch)
         """
         K = 9
+
+        old_shape = x.shape
+        is4d = False
+        if x.dim() == 4:
+            is4d = True
+            x = x.reshape(-1, 2)
         X_i = LazyTensor(x, axis=0)
         X_j = LazyTensor(self.control_points, axis=1)
 
@@ -52,7 +58,7 @@ class SplineNetwork(nn.Module):
         neighbors = self.control_points[indices]  # Shape: (batch, K, 2)
 
         # Prepare input for convolutional kernel function
-        h = 1 / self.N
+        h = 2 / self.N
         pairwise_norm = torch.linalg.norm(
             x.unsqueeze(2) - neighbors.permute(0, 2, 1), dim=1
         )
@@ -63,7 +69,10 @@ class SplineNetwork(nn.Module):
         # Perform row-wise dot product between weight and conv_out vectors
         output = torch.sum(self.weights[indices] * conv_out, dim=1)  # Shape: (batch)
 
-        return output
+        if is4d:
+            output = output.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
+
+        return output, x
 
     def cubic_conv(self, s):
         """
@@ -107,7 +116,3 @@ n = 1000
 model = SplineNetwork(n).to(device)
 
 X = torch.tensor([[1.0, 1.0], [-1.0, -1.0], [0.0, 0.0]])
-
-print(model.forward(X))
-
-

@@ -32,7 +32,7 @@ def radon_transform(image: torch.Tensor, theta=None):
     return sinogram
 
 
-def batch_radon(z, f, L, theta=None, CUDA=False):
+def batch_radon_siren(z, f, L, theta=None, CUDA=False):
     """
     z : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree

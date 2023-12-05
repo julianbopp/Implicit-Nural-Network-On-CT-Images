@@ -7,7 +7,7 @@ from torchmetrics.audio import SignalNoiseRatio
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.siren import Siren
-from RadonTransform.radon_transform import batch_radon, radon_transform
+from RadonTransform.radon_transform import batch_radon_siren, radon_transform
 
 CUDA = torch.cuda.is_available()
 resolution = 256
@@ -61,7 +61,7 @@ for angles, angleIdx in angleLoader:
             coordIdx_unsq[:, 0], angleIdx_unsq[0, :], indexing="ij"
         )
 
-        batch_radon_output[coordIdx_grid, angleIdx_grid] = batch_radon(
+        batch_radon_output[coordIdx_grid, angleIdx_grid] = batch_radon_siren(
             coords, img_siren, 363, angles, CUDA=CUDA
         ).detach()
 

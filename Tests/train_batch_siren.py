@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.siren import Siren
-from RadonTransform.radon_transform import batch_radon
+from RadonTransform.radon_transform import batch_radon_siren
 
 CUDA = torch.cuda.is_available()
 
@@ -60,7 +60,7 @@ for step in range(training_steps):
     for angle, angle_idx in angleLoader:
         for coords, coords_idx in coordLoader:
             optim.zero_grad()
-            radon_output = batch_radon(
+            radon_output = batch_radon_siren(
                 coords, img_siren, sample_points, theta=angle, CUDA=CUDA
             )
             # Reshape coordIdx and angleIdx
@@ -80,7 +80,7 @@ for step in range(training_steps):
             loss.backward()
             optim.step()
 
-    step = step + 1 # WTF?
+    step = step + 1  # WTF?
     print(torch.tensor(loss_total[-180 * coordSet.__len__() :]).mean().item())
 
 torch.save(img_siren.state_dict(), "../img_batch_siren.pt")

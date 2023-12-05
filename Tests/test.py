@@ -29,7 +29,7 @@ print(input.shape)
 print(img_siren(input))
 
 # radon_batch_output = batch_radon(torch.linspace(-(0.5+1.414)/2,(0.5+1.414)/2,steps=256),img_siren, 30)
-radon_batch_output = batch_radon(
+radon_batch_output = batch_radon_siren(
     torch.linspace(-1, 1, steps=256), img_siren, 30, torch.linspace(0, 3.14159, 180)
 )
 print(radon_batch_output)
