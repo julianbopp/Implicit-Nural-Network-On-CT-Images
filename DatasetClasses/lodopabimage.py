@@ -1,5 +1,6 @@
 import h5py
 import torch
+import torch.nn.functional as F
 from torch import from_numpy
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -9,6 +10,7 @@ class LodopabImage(Dataset):
     """Loads a single image from the LoDoPaB-CT dataset and makes pixel batching possible"""
 
     def __init__(self, resolution, set="ground_truth_train", pos1="000", pos2=0):
+        self.resolution = resolution
         self.image_path = f"../dataset/{set}/{set}_{pos1}.hdf5"
         self.image = from_numpy(self.read_hdf5(self.image_path))[pos2, :, :].unsqueeze(
             0
@@ -51,3 +53,21 @@ class LodopabImage(Dataset):
 
     def get_2d_np(self):
         return self.image.detach().numpy()[0, :, :]
+
+    def sample_image(self, grid, image):
+        """
+        Sample image with coordinates in [-1,1]^2 using bilinear interpolation
+        :param grid: meshgrid with shape (1,X,Y,2)
+        :param image: shape (X,Y)
+        :return: pixel value at coordinates
+        """
+        reshaped_image = image.unsqueeze(0).unsqueeze(0)
+        sampled_image = F.grid_sample(
+            reshaped_image,
+            grid,
+            mode="bilinear",
+            padding_mode="zeros",
+            align_corners=True,
+        )
+
+        return sampled_image
