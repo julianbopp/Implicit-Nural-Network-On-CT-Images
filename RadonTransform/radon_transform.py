@@ -49,8 +49,8 @@ def batch_radon_siren(z, f, L, theta=None, CUDA=False):
 
     mgrid = torch.stack(torch.meshgrid(z, t, indexing="xy"))
     mgrid = mgrid.permute(2, 0, 1)
-
     mgrid = mgrid.unsqueeze(1).expand(-1, len(theta), -1, -1)
+    mgrid = mgrid.permute(0, 1, 3, 2)  # Shape: [len(z), len(theta), L, 2]
 
     phi = torch.tensor((theta) * math.pi / 180 + math.pi / 2)
 
@@ -63,16 +63,15 @@ def batch_radon_siren(z, f, L, theta=None, CUDA=False):
         rot = rot.cuda()
 
     # mgrid_rot = mgrid @ rot.t()
-    mgrid_rot = torch.matmul(rot, mgrid)
+    mgrid_rot = torch.matmul(mgrid, rot)
 
-    mgrid_rot = mgrid_rot.permute(0, 1, 3, 2)
     mask = (torch.linalg.norm(mgrid_rot, ord=float("inf"), dim=3) <= 1).unsqueeze(3)
     f_out, _ = f(mgrid_rot)
-    f_out = mask * f_out
+    f_out = mask * f_out  # Shape: [len(z), len(theta), L, 1]
 
-    f_sum = torch.sum(f_out, dim=2)
+    f_sum = torch.sum(f_out, dim=2)  # Shape: [len(z), len(theta), 1]
 
-    output = f_sum[:, :, 0]
+    output = f_sum[:, :, 0]  # Shape: [len(z), len(theta)]
 
     return output
 
