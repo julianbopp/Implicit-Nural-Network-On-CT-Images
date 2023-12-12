@@ -80,7 +80,6 @@ for step in range(training_steps):
             loss.backward()
             optim.step()
 
-    step = step + 1  # WTF?
     print(torch.tensor(loss_total[-180 * coordSet.__len__() :]).mean().item())
 
 torch.save(img_siren.state_dict(), "../img_batch_siren.pt")
