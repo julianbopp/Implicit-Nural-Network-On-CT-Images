@@ -1,9 +1,12 @@
 import h5py
+import math
+import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import from_numpy
 from torch.utils.data import Dataset
 from torchvision import transforms
+
+from RadonTransform.radon_transform import batch_radon_siren
 
 
 class LodopabImage(Dataset):
@@ -12,21 +15,39 @@ class LodopabImage(Dataset):
     def __init__(self, resolution, set="ground_truth_train", pos1="000", pos2=0):
         self.resolution = resolution
         self.image_path = f"../dataset/{set}/{set}_{pos1}.hdf5"
-        self.image = from_numpy(self.read_hdf5(self.image_path))[pos2, :, :].unsqueeze(
-            0
-        )
+        self.image = torch.from_numpy(
+            self.read_hdf5(self.image_path)[pos2, :, :]
+        )  # Shape: [362, 362]
 
         self.transform = transforms.Compose(
             [
-                transforms.Resize(resolution),
-                # transforms.Normalize(torch.Tensor([1]), torch.Tensor([1]))
+                transforms.Resize(resolution, antialias=True),
+                transforms.Normalize(torch.Tensor([0]), torch.Tensor([1])),
+                # transforms.Pad(
+                # math.ceil((math.sqrt(2) * resolution - resolution)) // 2
+                # ),
             ]
         )
 
-        self.image = self.transform(self.image)
+        self.image = self.transform(self.image.unsqueeze(0))  # Shape: [1, res, res]
+        self.image = self.image.squeeze().detach().numpy()  # Shape: [res, res]
+
+        diagonal = math.sqrt(2) * max(self.image.shape)
+        pad = [int(math.ceil(diagonal - s)) for s in self.image.shape]
+        new_center = [(s + p) // 2 for s, p in zip(self.image.shape, pad)]
+        old_center = [s // 2 for s in self.image.shape]
+        pad_before = [nc - oc for oc, nc in zip(old_center, new_center)]
+        pad_width = [(pb, p - pb) for pb, p in zip(pad_before, pad)]
+        padded_image = np.pad(
+            self.image, pad_width, mode="constant", constant_values=0
+        )  # Shape: [512, 512]
+        self.image = torch.from_numpy(padded_image).unsqueeze(0)  # Shape: [1, 512, 512]
+        print(pad_width)
 
         self.coords = self.get_mgrid(resolution, dim=2)
         self.pixels = self.image.permute(1, 2, 0).view(-1, 1)
+
+        self.padded_resolution = self.image.shape[1]
 
     def __len__(self):
         return self.image.shape[1] * self.image.shape[2]
@@ -54,20 +75,37 @@ class LodopabImage(Dataset):
     def get_2d_np(self):
         return self.image.detach().numpy()[0, :, :]
 
-    def sample_image(self, grid, image):
+    def sample_image(self, grid, image=None):
         """
         Sample image with coordinates in [-1,1]^2 using bilinear interpolation
-        :param grid: meshgrid with shape (1,X,Y,2)
-        :param image: shape (X,Y)
-        :return: pixel value at coordinates
+        :param grid: meshgrid with shape (N, H_out, W_out, 2)
+        :param image: shape (N, C, H_in, W_in)
+        :return: pixel value at coordinates shape (N, Height, Width, C) and input grid
         """
-        reshaped_image = image.unsqueeze(0).unsqueeze(0)
+        if image is None:
+            image = self.image  # Shape: [1, res, res]
+            image = image.unsqueeze(0)  # Shape: [1, 1, res, res]
+            image = image.expand(grid.shape[0], -1, -1, -1)  # Shape: [N, 1, res, res]
+
         sampled_image = F.grid_sample(
-            reshaped_image,
+            image,
             grid,
             mode="bilinear",
             padding_mode="zeros",
             align_corners=True,
         )
 
-        return sampled_image
+        sampled_image = sampled_image.permute(0, 2, 3, 1)
+
+        return sampled_image, grid
+
+    def get_radon_transform(self):
+        print(self.padded_resolution)
+        z = torch.linspace(-math.sqrt(1), math.sqrt(1), steps=self.padded_resolution)
+        f = self.sample_image
+        L = self.padded_resolution
+        theta = torch.arange(0, 180, step=1) - 90
+
+        radon_transform = batch_radon_siren(z, f, L, theta)
+
+        return radon_transform
