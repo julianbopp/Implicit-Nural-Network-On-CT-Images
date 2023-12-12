@@ -4,7 +4,7 @@ from torch.nn import ConstantPad2d
 from torchvision.transforms import v2
 
 
-def radon_transform(image: torch.Tensor, theta=None):
+def radon_transform(image: torch.Tensor, theta=None, circle=True):
     """Dimension of torch tensor should be 1 x height x width"""
     if theta is None:
         theta = 180
@@ -20,7 +20,9 @@ def radon_transform(image: torch.Tensor, theta=None):
     pad_before = [nc - oc for oc, nc in zip(old_center, new_center)]
     pad_width = [(pb, p - pb) for pb, p in zip(pad_before, pad)]
     pad = ConstantPad2d(pad_width[0] + pad_width[1], 0)
-    image = pad(image)
+
+    if not circle:
+        image = pad(image)
     sinogram = torch.zeros([1, image.shape[1], theta])
 
     # Rotate by angle and sum in one dimension
@@ -32,14 +34,38 @@ def radon_transform(image: torch.Tensor, theta=None):
     return sinogram
 
 
-def batch_radon_siren(z, f, L, theta=None, CUDA=False):
+def radon_transform_alt(image: torch.Tensor, theta: int):
+    # Transform image to Grayscale with single channel
+    image = v2.Grayscale(1)(image)
+
+    # Rotate image once by 45 to create padding with 0's
+    image = v2.RandomRotation((45, 45), expand=True)(image)
+    image = v2.RandomRotation((-45, -45), expand=False)(image)
+    print(image.shape)
+
+    _, height, width = image.shape
+    sinogram = torch.zeros([1, height, theta])
+
+    # Rotate by angle and sum in one dimension
+    for i in range(theta):
+        rotated_image = v2.RandomRotation((i, i), expand=False)(image)
+        sum = torch.sum(rotated_image, 1)
+        sinogram[0][:, i] = sum
+
+    return sinogram
+
+
+def batch_radon_siren(z, f, L, theta=None, CUDA=False, circle=True):
     """
     z : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree
     f : function to sample from (support on [-1, 1])
     L : number of sample points on one Line
     """
-    t = torch.linspace(-math.sqrt(2), math.sqrt(2), steps=L)
+    if circle:
+        t = torch.linspace(-1, 1, steps=L)
+    else:
+        t = torch.linspace(-math.sqrt(2), math.sqrt(2), steps=L)
     output = torch.zeros(len(z), len(theta))
 
     if CUDA:
@@ -62,17 +88,28 @@ def batch_radon_siren(z, f, L, theta=None, CUDA=False):
     if CUDA:
         rot = rot.cuda()
 
-    # mgrid_rot = mgrid @ rot.t()
     mgrid_rot = torch.matmul(mgrid, rot)
 
     mask = (torch.linalg.norm(mgrid_rot, ord=float("inf"), dim=3) <= 1).unsqueeze(3)
+
+    # Reshape mgrid_rot such that it only has one batch dimension
+    # i.e. the angle and coord batch dimension will be reduced from 2 to 1
+    # old_shape = mgrid_rot.shape
+    # mgrid_rot = mgrid_rot.reshape(
+    # -1, old_shape[2], 2
+    # )  # Shape: [len(z) * len(theta), L, 2]
+
     f_out, _ = f(mgrid_rot)
+    # f_out = f_out.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
     f_out = mask * f_out  # Shape: [len(z), len(theta), L, 1]
 
     f_sum = torch.sum(f_out, dim=2)  # Shape: [len(z), len(theta), 1]
 
+    # Normalization constant
+    # normalization = torch.sum(mask, dim=2)
+    # zero_mask = normalization != 0
+    # f_sum[zero_mask] = torch.div(f_sum[zero_mask], normalization[zero_mask])
+
     output = f_sum[:, :, 0]  # Shape: [len(z), len(theta)]
 
     return output
-
-    pass
