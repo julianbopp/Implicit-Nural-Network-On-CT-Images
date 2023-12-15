@@ -4,7 +4,7 @@ from torch.nn import ConstantPad2d
 from torchvision.transforms import v2
 
 
-def radon_transform(image: torch.Tensor, theta=None, circle=True):
+def radon_transform(image: torch.Tensor, theta=None, circle=True, SIREN=False):
     """Dimension of torch tensor should be 1 x height x width"""
     if theta is None:
         theta = 180
@@ -55,61 +55,61 @@ def radon_transform_alt(image: torch.Tensor, theta: int):
     return sinogram
 
 
-def batch_radon_siren(z, f, L, theta=None, CUDA=False, circle=True):
+def batch_radon_siren(z, f, L, theta=None, device=None, circle=True, SIREN=True):
     """
     z : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree
     f : function to sample from (support on [-1, 1])
     L : number of sample points on one Line
     """
+
     if circle:
-        t = torch.linspace(-1, 1, steps=L)
+        t = torch.linspace(-math.sqrt(1), math.sqrt(1), steps=L, device=device)
     else:
-        t = torch.linspace(-math.sqrt(2), math.sqrt(2), steps=L)
-    output = torch.zeros(len(z), len(theta))
+        t = torch.linspace(-math.sqrt(2), math.sqrt(2), steps=L, device=device)
+    output = torch.zeros(len(z), len(theta), device=device)
 
-    if CUDA:
-        t = t.cuda()
-        z = z.cuda()
-        output = output.cuda()
-
-    mgrid = torch.stack(torch.meshgrid(z, t, indexing="xy"))
-    mgrid = mgrid.permute(2, 0, 1)
+    mgrid = torch.stack(torch.meshgrid(t, z, indexing="xy"), dim=2)
     mgrid = mgrid.unsqueeze(1).expand(-1, len(theta), -1, -1)
-    mgrid = mgrid.permute(0, 1, 3, 2)  # Shape: [len(z), len(theta), L, 2]
 
-    phi = torch.tensor((theta) * math.pi / 180 + math.pi / 2)
+    phi = torch.tensor((theta) * math.pi / 180, device=device)
 
     s = torch.sin(phi)
     c = torch.cos(phi)
 
-    rot = torch.stack([torch.stack([c, -s]), torch.stack([s, c])])
+    rot = torch.stack([torch.stack([c, s]), torch.stack([-s, c])])
+    # rot = rot.permute(2, 0, 1)
+    grid = mgrid.permute(1, 0, 2, 3)
     rot = rot.permute(2, 0, 1)
-    if CUDA:
-        rot = rot.cuda()
+    grid = grid.view(len(theta), -1, 2)
+    grid = grid.permute(0, 2, 1)
 
-    mgrid_rot = torch.matmul(mgrid, rot)
+    mgrid_rot = torch.matmul(rot, grid)
+    mgrid_rot = mgrid_rot.permute(0, 2, 1)
+    mgrid_rot = mgrid_rot.view(len(theta), len(z), L, 2)
+    mgrid_rot = mgrid_rot.permute(1, 0, 2, 3)
 
     mask = (torch.linalg.norm(mgrid_rot, ord=float("inf"), dim=3) <= 1).unsqueeze(3)
 
     # Reshape mgrid_rot such that it only has one batch dimension
     # i.e. the angle and coord batch dimension will be reduced from 2 to 1
-    # old_shape = mgrid_rot.shape
-    # mgrid_rot = mgrid_rot.reshape(
-    # -1, old_shape[2], 2
-    # )  # Shape: [len(z) * len(theta), L, 2]
+    old_shape = mgrid_rot.shape
+    mgrid_rot = mgrid_rot.reshape(
+        -1, old_shape[2], 2
+    )  # Shape: [len(z) * len(theta), L, 2]
 
     f_out, _ = f(mgrid_rot)
-    # f_out = f_out.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
+    f_out = f_out.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
     f_out = mask * f_out  # Shape: [len(z), len(theta), L, 1]
 
     f_sum = torch.sum(f_out, dim=2)  # Shape: [len(z), len(theta), 1]
 
     # Normalization constant
-    # normalization = torch.sum(mask, dim=2)
+    # normalization = torch.sum(mask) / (L**2)
     # zero_mask = normalization != 0
-    # f_sum[zero_mask] = torch.div(f_sum[zero_mask], normalization[zero_mask])
+    # f_sum[zero_mask] = f_sum[zero_mask] / normalization[zero_mask]
+    # f_sum = f_sum * 511
 
-    output = f_sum[:, :, 0]  # Shape: [len(z), len(theta)]
+    output = f_sum[:, :, 0] / L  # Shape: [len(z), len(theta)]
 
     return output

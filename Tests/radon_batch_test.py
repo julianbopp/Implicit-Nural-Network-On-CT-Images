@@ -10,7 +10,7 @@ from NeuralNetworks.siren import Siren
 from RadonTransform.radon_transform import batch_radon_siren, radon_transform
 
 CUDA = torch.cuda.is_available()
-resolution = 256
+resolution = 142
 img_siren = Siren(
     in_features=2,
     out_features=1,
@@ -62,7 +62,7 @@ for angles, angleIdx in angleLoader:
         )
 
         batch_radon_output[coordIdx_grid, angleIdx_grid] = batch_radon_siren(
-            coords, img_siren, 363, angles, CUDA=CUDA
+            coords, img_siren, 363, angles
         ).detach()
 
 # batch_radon_output[1:,:] = batch_radon_output[0:-1,:].clone()
