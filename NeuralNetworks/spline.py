@@ -27,7 +27,7 @@ class SplineNetwork(nn.Module):
 
         self.N = N
         self.weights = torch.randn(N, N, requires_grad=True)
-        self.weights = self.weights.reshape(-1)
+        self.weights = torch.abs(self.weights.reshape(-1, 1)) / self.weights.max()
         self.weights = nn.Parameter(self.weights)
 
         self.control_points = get_mgrid(sidelen=N, dim=2).view(-1, 2)
@@ -40,9 +40,14 @@ class SplineNetwork(nn.Module):
         """
         K = 9
 
+        device = x.device
+
+        self.weights = self.weights.to(device)
+        self.control_points = self.control_points.to(device)
+
         old_shape = x.shape
-        is4d = False
-        if x.dim() == 4:
+        is3d = False
+        if x.dim() == 3:
             is4d = True
             x = x.reshape(-1, 2)
         X_i = LazyTensor(x, axis=0)
@@ -53,12 +58,13 @@ class SplineNetwork(nn.Module):
 
         # Find indices of K nearest neighbors
         indices = D_ij.argKmin(K, dim=1)  # Shape: (batch, K)
+        indices = indices.to(device)
 
         # access the K nearest neighbors
         neighbors = self.control_points[indices]  # Shape: (batch, K, 2)
 
         # Prepare input for convolutional kernel function
-        h = 2 / self.N
+        h = (x[0] - x[1]).norm()
         pairwise_norm = torch.linalg.norm(
             x.unsqueeze(2) - neighbors.permute(0, 2, 1), dim=1
         )
@@ -67,10 +73,11 @@ class SplineNetwork(nn.Module):
         conv_out = self.cubic_conv(input)  # Shape: (batch, K)
 
         # Perform row-wise dot product between weight and conv_out vectors
-        output = torch.sum(self.weights[indices] * conv_out, dim=1)  # Shape: (batch)
-
-        if is4d:
-            output = output.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
+        output = torch.sum(
+            self.weights[indices] * conv_out.unsqueeze(-1), dim=1
+        )  # Shape: (batch)
+        if is3d:
+            output = output.reshape(old_shape[0], old_shape[1], 1)
 
         return output, x
 
@@ -81,9 +88,10 @@ class SplineNetwork(nn.Module):
         :param s: ||x-X||/h, shape: (batch, K)
         :return: kernel operation on s, shape: (batch, K)
         """
-        result = torch.zeros(s.shape)
+        device = s.device
+        result = torch.zeros(s.shape, device=device)
 
-        cond1 = (0 < torch.abs(s)) & (torch.abs(s) < 1)
+        cond1 = (0 <= torch.abs(s)) & (torch.abs(s) < 1)
         cond2 = (1 < torch.abs(s)) & (torch.abs(s) < 2)
         cond3 = 2 < torch.abs(s)
 
@@ -96,7 +104,7 @@ class SplineNetwork(nn.Module):
             - 4 * torch.abs(s[cond2])
             + 2
         )
-        result[cond3] = 0
+        # result[cond3] = 0
 
         return result
 
