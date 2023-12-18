@@ -12,7 +12,9 @@ from RadonTransform.radon_transform import batch_radon_siren
 class LodopabImage(Dataset):
     """Loads a single image from the LoDoPaB-CT dataset and makes pixel batching possible"""
 
-    def __init__(self, resolution, set="ground_truth_train", pos1="000", pos2=0):
+    def __init__(
+        self, resolution, set="ground_truth_train", pos1="000", pos2=0, pad=True
+    ):
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
@@ -34,19 +36,21 @@ class LodopabImage(Dataset):
         self.image = self.transform(self.image)  # Shape: [1, res, res]
         self.image = self.image.squeeze().detach().numpy()  # Shape: [res, res]
 
-        diagonal = math.sqrt(2) * max(self.image.shape)
-        pad = [int(math.ceil(diagonal - s)) for s in self.image.shape]
-        new_center = [(s + p) // 2 for s, p in zip(self.image.shape, pad)]
-        old_center = [s // 2 for s in self.image.shape]
-        pad_before = [nc - oc for oc, nc in zip(old_center, new_center)]
-        pad_width = [(pb, p - pb) for pb, p in zip(pad_before, pad)]
-        padded_image = np.pad(
-            self.image, pad_width, mode="constant", constant_values=0
-        )  # Shape: [512, 512]
+        if pad:
+            diagonal = math.sqrt(2) * max(self.image.shape)
+            pad = [int(math.ceil(diagonal - s)) for s in self.image.shape]
+            new_center = [(s + p) // 2 for s, p in zip(self.image.shape, pad)]
+            old_center = [s // 2 for s in self.image.shape]
+            pad_before = [nc - oc for oc, nc in zip(old_center, new_center)]
+            pad_width = [(pb, p - pb) for pb, p in zip(pad_before, pad)]
+            padded_image = np.pad(
+                self.image, pad_width, mode="constant", constant_values=0
+            )  # Shape: [512, 512]
+        else:
+            padded_image = self.image
         self.image = torch.from_numpy(padded_image).unsqueeze(0)  # Shape: [1, 512, 512]
-        print(pad_width)
 
-        self.pixels = self.image.permute(1, 2, 0).view(-1, 1)
+        self.pixels = self.image.reshape(-1, 1)
 
         self.padded_resolution = self.image.shape[1]
         self.coords = self.get_mgrid(self.padded_resolution, dim=2)
