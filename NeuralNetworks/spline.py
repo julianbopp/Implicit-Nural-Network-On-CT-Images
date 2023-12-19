@@ -1,3 +1,4 @@
+import math
 import torch
 from pykeops.torch import LazyTensor
 from torch import nn
@@ -19,18 +20,22 @@ def get_mgrid(sidelen, dim=2):
 
 
 class SplineNetwork(nn.Module):
-    def __init__(self, N):
+    def __init__(self, N, circle=False):
         """
         :param N: size of sidelength. Grid size will be N*N
         """
         super().__init__()
 
         self.N = N
-        self.weights = torch.randn(N, N, requires_grad=True)
-        self.weights = torch.abs(self.weights.reshape(-1, 1)) / self.weights.max()
+        self.weights = torch.zeros(N, N, requires_grad=True)
+        self.weights = self.weights.reshape(-1, 1)
         self.weights = nn.Parameter(self.weights)
+        # self.weights.data.uniform_(-1 / N, 1 / N)
 
         self.control_points = get_mgrid(sidelen=N, dim=2).view(-1, 2)
+
+        if circle:
+            self.control_points = self.control_points / math.sqrt(2)
         self.control_points.requires_grad = False
 
     def forward(self, x):
@@ -50,12 +55,12 @@ class SplineNetwork(nn.Module):
         if x.dim() == 3:
             is4d = True
             x = x.reshape(-1, 2)
+
         X_i = LazyTensor(x, axis=0)
         X_j = LazyTensor(self.control_points, axis=1)
 
         # Calculate symbolic (euclidean) distance matrix
         D_ij = ((X_i - X_j) ** 2).sum(-1)
-
         # Find indices of K nearest neighbors
         indices = D_ij.argKmin(K, dim=1)  # Shape: (batch, K)
         indices = indices.to(device)
@@ -116,11 +121,10 @@ device = (
     if torch.backends.mps.is_available()
     else "cpu"
 )
-device = "cpu"
 
 print(f"Using {device} device")
 
 n = 1000
-model = SplineNetwork(n).to(device)
+# model = SplineNetwork(n).to(device)
 
 X = torch.tensor([[1.0, 1.0], [-1.0, -1.0], [0.0, 0.0]])
