@@ -5,14 +5,13 @@ from torch.utils.data import DataLoader
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.siren import Siren
-from RadonTransform.radon_transform import batch_radon_siren
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-RESOLUTION = 64
+RESOLUTION = 364
 CIRCLE = True
 
-lodopabSet = LodopabImage(RESOLUTION)
+lodopabSet = LodopabImage(RESOLUTION, pad=False)
 model_input = lodopabSet.coords
 model_input = model_input.to(device)
 ground_truth, _ = lodopabSet.sample_image(
@@ -31,7 +30,7 @@ img_siren = Siren(
 )
 img_siren = img_siren.to(device)
 
-optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
+optim = torch.optim.Adam(lr=1e-3, params=img_siren.parameters())
 
 angleSet = AngleSet(180, rad=False)
 coordSet = CoordSet(lodopabSet.padded_resolution, circle=CIRCLE)
@@ -53,7 +52,7 @@ plt.imshow(sampled_image.squeeze().cpu().detach().numpy())
 plt.show()
 
 
-training_steps = 100
+training_steps = 1000
 sample_points = lodopabSet.padded_resolution
 
 loss_total = []
@@ -62,20 +61,27 @@ for step in range(training_steps):
     print(f"training step = {step}")
     model_output, _ = img_siren(model_input)
     loss = ((model_output - ground_truth) ** 2).mean()
+    print(loss.item())
 
     optim.zero_grad()
     loss.backward()
     optim.step()
 
-plt.imshow(model_output.view(lodopabSet.padded_resolution, -1).cpu().detach().numpy())
-plt.show()
-plt.imshow(ground_truth.view(lodopabSet.padded_resolution, -1).cpu().detach().numpy())
-plt.show()
+    if step % 50 == 0:
+        plt.imshow(
+            model_output.view(lodopabSet.padded_resolution, -1).cpu().detach().numpy()
+        )
+        plt.show()
+        plt.imshow(
+            ground_truth.view(lodopabSet.padded_resolution, -1).cpu().detach().numpy()
+        )
+        plt.show()
+
 
 z = torch.linspace(-1, 1, steps=100, device=device)
 f = img_siren
 theta = torch.arange(0, 180, step=1, device=device)
 L = 80
-batch_radon = batch_radon_siren(z, f, L, -theta, device=device)
-plt.imshow(batch_radon.cpu().detach().numpy())
-plt.show()
+# batch_radon = batch_radon_siren(z, f, L, -theta, device=device)
+# plt.imshow(batch_radon.cpu().detach().numpy())
+# plt.show()
