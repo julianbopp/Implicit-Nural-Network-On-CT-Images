@@ -15,6 +15,7 @@ class LodopabImage(Dataset):
     def __init__(
         self, resolution, set="ground_truth_train", pos1="000", pos2=0, pad=True
     ):
+        self.circle = True if pad else False
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
@@ -142,9 +143,14 @@ class LodopabImage(Dataset):
 
     def get_radon_transform(self):
         print(self.padded_resolution)
+        if self.circle:
+            range = 1
+        else:
+            range = 2
+
         z = torch.linspace(
-            -math.sqrt(1),
-            math.sqrt(1),
+            -math.sqrt(range),
+            math.sqrt(range),
             steps=self.padded_resolution,
             device=self.device,
         )
@@ -152,7 +158,9 @@ class LodopabImage(Dataset):
         L = self.padded_resolution
         theta = torch.arange(0, 180, step=1, device=self.device) + 90
 
-        radon_transform = batch_radon_siren(z, f, L, theta, self.device)
+        radon_transform = batch_radon_siren(
+            z, f, L, theta, self.device, circle=self.circle
+        )
 
         return radon_transform
 
