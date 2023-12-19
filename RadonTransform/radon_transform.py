@@ -55,7 +55,7 @@ def radon_transform_alt(image: torch.Tensor, theta: int):
     return sinogram
 
 
-def batch_radon_siren(z, f, L, theta=None, device=None, circle=True, SIREN=True):
+def batch_radon_siren(z, f, L, theta=None, device=None, circle=False, SIREN=True):
     """
     z : tensor of points on radon projection plane
     theta : List [a, b] a start degree, b end degree
@@ -105,11 +105,11 @@ def batch_radon_siren(z, f, L, theta=None, device=None, circle=True, SIREN=True)
     f_sum = torch.sum(f_out, dim=2)  # Shape: [len(z), len(theta), 1]
 
     # Normalization constant
-    # normalization = torch.sum(mask) / (L**2)
+    # normalization = torch.sum(mask, dim=2)
     # zero_mask = normalization != 0
     # f_sum[zero_mask] = f_sum[zero_mask] / normalization[zero_mask]
     # f_sum = f_sum * 511
-
-    output = f_sum[:, :, 0] / L  # Shape: [len(z), len(theta)]
+    # f_sum = torchvision.transforms.v2.ToTensor()(f_sum)
+    output = f_sum[:, :, 0]  # Shape: [len(z), len(theta)]
 
     return output
