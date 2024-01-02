@@ -9,7 +9,7 @@ from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 from RadonTransform.radon_transform import batch_radon_siren
 
-N = 128
+N = 256
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 CIRCLE = True
@@ -19,18 +19,16 @@ padded_N = lodopabSet.padded_resolution
 
 image = lodopabSet.image
 sinogram = lodopabSet.get_radon_transform()
-plt.imshow(image.view(padded_N, padded_N).cpu())
-plt.show()
 
 model_input = lodopabSet.coords
 model_input = model_input.to(device)
 
-spline_network = SplineNetwork(padded_N, circle=CIRCLE)
+spline_network = SplineNetwork(N, circle=CIRCLE)
 spline_network = spline_network.to(device)
 
 angleSet = AngleSet(180, rad=False)
 angleSet.angles = angleSet.angles.to(device)
-angleLoader = DataLoader(angleSet, batch_size=180, shuffle=True)
+angleLoader = DataLoader(angleSet, batch_size=18, shuffle=True)
 
 coordSet = CoordSet(padded_N, circle=CIRCLE)
 coordSet.coords = coordSet.coords.to(device)
