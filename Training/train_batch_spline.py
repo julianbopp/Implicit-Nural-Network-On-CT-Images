@@ -40,7 +40,7 @@ coordLoader = DataLoader(coordSet, batch_size=padded_N, shuffle=True)
 optim = torch.optim.Adam(lr=0.1, params=spline_network.parameters())
 
 sample_points = int(padded_N)
-training_steps = 500
+training_steps = 100
 loss_total = []
 
 for step in range(training_steps):
@@ -92,4 +92,6 @@ for step in range(training_steps):
 
             loss.backward()
             optim.step()
+
     print(torch.tensor(loss_total[-180 * coordSet.__len__() :]).mean().item())
+torch.save(spline_network.state_dict(), "../spline_network_batch_noise.pt")

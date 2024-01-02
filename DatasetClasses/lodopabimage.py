@@ -141,7 +141,7 @@ class LodopabImage(Dataset):
         sampled_image = sampled_image.to(self.device)
         return sampled_image, grid
 
-    def get_radon_transform(self):
+    def get_radon_transform(self, noise=True):
         print(self.padded_resolution)
         if self.circle:
             range = 1
@@ -161,6 +161,12 @@ class LodopabImage(Dataset):
         radon_transform = batch_radon_siren(
             z, f, L, theta, self.device, circle=self.circle
         )
+
+        if noise:
+            radon_transform = (
+                radon_transform
+                + torch.randn(radon_transform.size(), device=self.device) * 0.05
+            )
 
         return radon_transform
 

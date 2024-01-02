@@ -6,7 +6,7 @@ from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 
 N = 256
-lodopabSet = LodopabImage(N, pad=True)
+lodopabSet = LodopabImage(N, pad=False)
 padded_N = lodopabSet.padded_resolution
 print(padded_N)
 
