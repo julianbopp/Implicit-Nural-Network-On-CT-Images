@@ -16,7 +16,7 @@ def get_mgrid(sidelen, dim=2):
     sidelen: int
     dim: int"""
     tensors = tuple(dim * [torch.linspace(-1, 1, steps=sidelen)])
-    mgrid = torch.stack(torch.meshgrid(*tensors), dim=-1)
+    mgrid = torch.stack(torch.meshgrid(*tensors, indexing="xy"), dim=-1)
     return mgrid
 
 
@@ -30,6 +30,7 @@ class SplineNetwork(nn.Module):
         self.N = N
         self.weights = torch.zeros(N, N, requires_grad=True)
         # self.weights = LodopabImage(N, pad=False).image
+        # self.weights = self.weights.cpu()
         self.weights = self.weights.reshape(-1, 1)
         self.weights = nn.Parameter(self.weights)
         # self.weights.data.uniform_(-1 / N, 1 / N)
@@ -45,7 +46,7 @@ class SplineNetwork(nn.Module):
         :param x: input with shape (batch, 2)
         :return: cubic interpolation function: sum w_i conv(||x-X||/h), shape (batch)
         """
-        K = 9
+        K = 16
 
         device = x.device
 
@@ -55,7 +56,7 @@ class SplineNetwork(nn.Module):
         old_shape = x.shape
         is3d = False
         if x.dim() == 3:
-            is4d = True
+            is3d = True
             x = x.reshape(-1, 2)
 
         X_i = LazyTensor(x, axis=0)
@@ -71,18 +72,22 @@ class SplineNetwork(nn.Module):
         neighbors = self.control_points[indices]  # Shape: (batch, K, 2)
 
         # Prepare input for convolutional kernel function
-        h = (x[0] - x[1]).norm()
-        pairwise_norm = torch.linalg.norm(
-            x.unsqueeze(2) - neighbors.permute(0, 2, 1), dim=1
-        )
-        input = pairwise_norm / h  # Shape: (batch, K)
+        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
+        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        pairwise_norm = x.unsqueeze(2) - neighbors.permute(0, 2, 1)
 
-        conv_out = self.cubic_conv(input)  # Shape: (batch, K)
+        input_x = pairwise_norm[:, 0, :] / h_x  # Shape: (batch, K)
+        input_y = pairwise_norm[:, 1, :] / h_y  # Shape: (batch, K)
+
+        conv_out_x = self.cubic_conv(input_x)  # Shape: (batch, K)
+        conv_out_y = self.cubic_conv(input_y)  # Shape: (batch, K)
 
         # Perform row-wise dot product between weight and conv_out vectors
-        output = torch.sum(
-            self.weights[indices] * conv_out.unsqueeze(-1), dim=1
-        )  # Shape: (batch)
+        conv_out_prod = conv_out_x * conv_out_y
+        weights = self.weights[indices].squeeze()
+
+        output = torch.sum(weights * conv_out_prod, dim=1)
+
         if is3d:
             output = output.reshape(old_shape[0], old_shape[1], 1)
 
