@@ -80,7 +80,7 @@ class LodopabImage(Dataset):
         sidelen: int
         dim: int"""
         tensors = tuple(dim * [torch.linspace(-1, 1, steps=sidelen)])
-        mgrid = torch.stack(torch.meshgrid(*tensors), dim=-1)
+        mgrid = torch.stack(torch.meshgrid(*tensors, indexing="xy"), dim=-1)
         mgrid = mgrid.reshape(-1, dim)
         mgrid.to(self.device)
         return mgrid
@@ -141,7 +141,7 @@ class LodopabImage(Dataset):
         sampled_image = sampled_image.to(self.device)
         return sampled_image, grid
 
-    def get_radon_transform(self, noise=True):
+    def get_radon_transform(self, noise=False):
         print(self.padded_resolution)
         if self.circle:
             range = 1
@@ -156,7 +156,7 @@ class LodopabImage(Dataset):
         )
         f = self.sample_image
         L = self.padded_resolution
-        theta = torch.arange(0, 180, step=1, device=self.device) + 90
+        theta = -torch.arange(0, 180, step=1, device=self.device)
 
         radon_transform = batch_radon_siren(
             z, f, L, theta, self.device, circle=self.circle
