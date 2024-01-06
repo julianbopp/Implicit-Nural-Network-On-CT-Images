@@ -17,13 +17,13 @@ class FuncInterval:
             raise ValueError(f"start: {start} must be less than end: {end}")
         if end < 0 or end > 1:
             raise ValueError(f"start: {end} out of bounds (<0 or >1)")
-        if x_sign != "pos" and x_sign != "neg":
+        if x_sign != "pos" and x_sign != "neg" and x_sign is not None:
             raise ValueError(f"sign: {x_sign} must be 'pos' or 'neg")
-        if y_sign != "pos" and y_sign != "neg":
+        if y_sign != "pos" and y_sign != "neg" and y_sign is not None:
             raise ValueError(f"sign: {y_sign} must be 'pos' or 'neg")
-        if x_dist != 1 and x_dist != 2:
+        if x_dist != 1 and x_dist != 2 and x_dist is not None:
             raise ValueError(f"dist: {x_dist} must be 1 or 2")
-        if y_dist != 1 and y_dist != 2:
+        if y_dist != 1 and y_dist != 2 and y_dist is not None:
             raise ValueError(f"dist: {y_dist} must be 1 or 2")
 
     def contains(self, z):
@@ -33,23 +33,26 @@ class FuncInterval:
             return False
 
     def split(self, z, a_x_sign=None, a_y_sign=None, b_x_sign=None, b_y_sign=None):
-        interval_a = FuncInterval(
-            self.dim,
-            self.start,
-            z,
-            x_sign=a_x_sign,
-            y_sign=a_y_sign,
-            x_dist=self.x_dist,
-            y_dist=self.y_dist,
-        )
-        interval_b = FuncInterval(
-            self.dim,
-            z,
-            self.end,
-            x_sign=b_x_sign,
-            y_sign=b_y_sign,
-            x_dist=self.x_dist,
-            y_dist=self.y_dist,
-        )
+        if z <= self.start or z >= self.end:
+            return self, self
+        else:
+            interval_a = FuncInterval(
+                self.dim,
+                self.start,
+                z,
+                x_sign=a_x_sign,
+                y_sign=a_y_sign,
+                x_dist=self.x_dist,
+                y_dist=self.y_dist,
+            )
+            interval_b = FuncInterval(
+                self.dim,
+                z,
+                self.end,
+                x_sign=b_x_sign,
+                y_sign=b_y_sign,
+                x_dist=self.x_dist,
+                y_dist=self.y_dist,
+            )
 
-        return interval_a, interval_b
+            return interval_a, interval_b
