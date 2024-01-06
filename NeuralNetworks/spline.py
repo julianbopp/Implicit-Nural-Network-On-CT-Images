@@ -131,8 +131,12 @@ class SplineNetwork(nn.Module):
         # 0. Find line slope and normal of slope
         # 1. Find all control points that are close to the line
         #   - project all control points to normal of slope to find distance
-        h = (self.control_points[0] - self.control_points[1]).norm()
-        threshold = 2 * h
+        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
+        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+
+        threshold_x = 2 * h_x
+        threshold_y = 2 * h_y
+
         # Transform degree into radians and compute rotation matrix
         phi = torch.tensor(theta * math.pi / 180)
         s = torch.sin(phi)
@@ -153,8 +157,10 @@ class SplineNetwork(nn.Module):
             / (torch.linalg.norm(normal).unsqueeze(-1) ** 2)
         ) * normal.T
 
-        distances = torch.linalg.norm(projections - normal.T, dim=1)
-        indices = (distances <= threshold).nonzero()
+        distances = torch.abs(projections - normal.T)
+        indices = torch.all(
+            distances <= torch.tensor([threshold_x, threshold_y]), dim=1
+        ).nonzero()
 
         # 2. Find extrema of line, x- x+ s.t line is x- + t(x+ - x-) for t in [0,1]
         line_slope = torch.tensor([normal[1], -normal[0]])
@@ -191,144 +197,55 @@ class SplineNetwork(nn.Module):
         return sum
 
     def integrate_control_point(self, slope, bias, control_point):
-        h = torch.linalg.norm(self.control_points[0, :] - self.control_points[1, :])
+        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
+        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
 
-        a = slope[0] ** 2 + slope[1] ** 2
-        b = -2 * (
-            slope[0] * (-bias[0] + control_point[0, 0])
-            + slope[1] * (-bias[1] + control_point[0, 1])
+        a = slope[0]
+        b = bias[0]
+        c = slope[1]
+        d = bias[1]
+
+        x = control_point[0][0]
+        y = control_point[0][1]
+
+        x_bounds_1, y_bounds_1, x_bounds_2, y_bounds_2 = (
+            torch.zeros(2),
+            torch.zeros(2),
+            torch.zeros(2),
+            torch.zeros(2),
         )
-        c = (-bias[0] + control_point[0, 0]) ** 2 + (
-            -bias[1] + control_point[0, 1]
-        ) ** 2
 
-        bounds1 = self.solve_quadratic_equation(a, b, c - h**2)
-        bounds2 = self.solve_quadratic_equation(a, b, c - 4 * h**2)
-        if (
-            bounds1[0] == float("nan")
-            or bounds1[1] == float("nan")
-            or bounds2[0] == float("nan")
-            or bounds2[1] == float("nan")
-        ):
-            print("bound nan")
-        if bounds1[1] > bounds2[1] or bounds1[0] < bounds2[0]:
-            print("Something is wrong with the integral bounds!")
+        x_bounds_1[0] = torch.nn.functional.relu((-h_x + x - bias[0]) / slope[0])
+        x_bounds_1[1] = torch.nn.functional.relu((h_x + x - bias[0]) / slope[0])
+        x_bounds_2[0] = torch.nn.functional.relu((-2 * h_x + x - bias[0]) / slope[0])
+        x_bounds_2[1] = torch.nn.functional.relu((2 * h_x + x - bias[0]) / slope[0])
 
-        if bounds1[0] < -1:
-            bounds1[0] = -1
-        if bounds2[0] < -1:
-            bounds2[0] = -1
-        if bounds1[1] > 1:
-            bounds1[1] = 1
-        if bounds2[1] > 1:
-            bounds2[1] = 1
+        x_crossing = (x - bias[0]) / slope[0]
 
-        eps = 0.01
-        integral = (
-            self.integrate_cubic_bound2(a, b, c, h, bounds2[1])
-            - self.integrate_cubic_bound2(a, b, c, h, bounds1[1])
-            + self.integrate_cubic_bound1(a, b, c, h, bounds1[1])
-            - self.integrate_cubic_bound1(a, b, c, h, bounds1[0])
-            + self.integrate_cubic_bound2(a, b, c, h, bounds1[0])
-            - self.integrate_cubic_bound2(a, b, c, h, bounds2[0])
+        y_bounds_1[0] = torch.nn.functional.relu((-h_y + y - bias[1]) / slope[1])
+        y_bounds_1[1] = torch.nn.functional.relu((h_y + y - bias[1]) / slope[1])
+        y_bounds_2[0] = torch.nn.functional.relu((-2 * h_y + y - bias[1]) / slope[1])
+        y_bounds_2[1] = torch.nn.functional.relu((2 * h_y + y - bias[1]) / slope[1])
+
+        y_crossing = (y - bias[1]) / slope[1]
+
+        x_bounds_1[x_bounds_1 > 1] = 1
+        x_bounds_2[x_bounds_2 > 1] = 1
+        y_bounds_1[y_bounds_1 > 1] = 1
+        y_bounds_2[y_bounds_2 > 1] = 1
+
+        lower_max_2, ind_lower_max_2 = torch.max(
+            torch.tensor([x_bounds_2[0], y_bounds_2[0]]), dim=0
         )
+        lower_min_1 = torch.min(torch.tensor([x_bounds_1[0], y_bounds_1[0]]))
+        lower_max_1 = torch.max(torch.tensor([x_bounds_1[0], y_bounds_1[0]]))
+        upper_min_1 = torch.min(torch.tensor([x_bounds_1[1], y_bounds_1[1]]))
+        upper_max_1 = torch.max(torch.tensor([x_bounds_1[1], y_bounds_1[1]]))
+        upper_min_2 = torch.min(torch.tensor([x_bounds_2[1], y_bounds_2[1]]))
+        upper_max_2 = torch.max(torch.tensor([x_bounds_2[1], y_bounds_2[1]]))
+        integral = ()
 
         return integral
-
-    def solve_quadratic_equation(self, a, b, c):
-        D = b**2 - 4 * a * c
-
-        if b == 0 and a != 0 and c <= 0:
-            return torch.tensor([-math.sqrt(-c / a), math.sqrt(-c / a)])
-        if a == 0 and b != 0:
-            return torch.tensor([-c / b, -c / b])
-        elif D < 0:
-            return torch.tensor([float("nan"), float("nan")])
-        elif a == 0 and b == 0:
-            return torch.tensor([float("nan"), float("nan")])
-        root1 = (-b - math.sqrt(D)) / (2 * a)
-        root2 = (-b + math.sqrt(D)) / (2 * a)
-
-        return torch.tensor([root1, root2])
-
-    def integrate_cubic_bound1(self, a, b, c, h, t):
-        if 4 * a * c - b**2 <= 0:
-            out = (
-                (3 * (math.sqrt(a) * t + math.sqrt(c)) ** 4)
-                / (8 * math.sqrt(a) * h**3)
-                - (5 * a * t**3) / (6 * h**2)
-                - (5 * math.sqrt(a) * math.sqrt(c) * t**2) / (2 * h**2)
-                + (1 - (5 * c) / (2 * h**2)) * t
-            )
-        elif b == 0 and c == 0:
-            out = (
-                (3 * a ** (3 / 2) * t**3 * abs(t)) / (8 * h**3)
-                - (5 * a * t**3) / (6 * h**2)
-                + t
-            )
-        else:
-            out = (
-                27
-                * math.sqrt(a)
-                * (4 * a * c - b**2) ** 2
-                * math.asinh((2 * a * t + b) / math.sqrt(4 * a * c - b**2))
-                - 640 * a**4 * h * t**3
-                - 960 * a**3 * b * h * t**2
-                + 18
-                * a
-                * (2 * a * t + b)
-                * math.sqrt(t * (a * t + b) + c)
-                * (4 * a * (2 * t * (a * t + b) + 5 * c) - 3 * b**2)
-                + 384 * a**3 * h * (2 * h**2 - 5 * c) * t
-            ) / (768 * a**3 * h**3)
-
-        return out
-
-    def integrate_cubic_bound2(self, a, b, c, h, t):
-        if 4 * a * c - b**2 <= 0:
-            out = (
-                t
-                * (
-                    math.sqrt(a) * ((48 * h**2 - 18 * c) * t - 3 * a * t**3)
-                    + math.sqrt(c)
-                    * (
-                        -12 * a * t**2
-                        + 60 * math.sqrt(a) * h * t
-                        + 96 * h**2
-                        - 12 * c
-                    )
-                    + 20 * a * h * t**2
-                    + 48 * h**3
-                    + 60 * c * h
-                )
-            ) / (24 * h**3)
-        elif b == 0 and c == 0:
-            out = (
-                -(math.sqrt(a) * (3 * a * t**3 + 48 * h**2 * t) * abs(t))
-                / (24 * h**3)
-                + (5 * a * t**3) / (6 * h**2)
-                + 2 * t
-            )
-        else:
-            out = (
-                -(
-                    (4 * a * c - b**2)
-                    * (4 * a * (32 * h**2 + 3 * c) - 3 * b**2)
-                    * math.asinh((2 * a * t + b) / math.sqrt(4 * a * c - b**2))
-                )
-                / (256 * a ** (5 / 2) * h**3)
-                + (5 * a * t**3) / (6 * h**2)
-                + (5 * b * t**2) / (4 * h**2)
-                - (
-                    (2 * a * t + b)
-                    * math.sqrt(t * (a * t + b) + c)
-                    * (4 * a * (2 * t * (a * t + b) + 32 * h**2 + 5 * c) - 3 * b**2)
-                )
-                / (128 * a**2 * h**3)
-                + ((4 * h**2 + 5 * c) * t) / (2 * h**2)
-            )
-
-        return out
 
 
 device = (
@@ -340,13 +257,13 @@ device = (
 )
 device = "cpu"
 print(f"Using {device} device")
-TEST_INTEGRATE = False
+TEST_INTEGRATE = True
 if TEST_INTEGRATE:
     n = 32
     model = SplineNetwork(n)
 
     t = torch.linspace(-0.5, -0.25, steps=30)
-    theta = torch.arange(0, 5, step=1)
+    theta = torch.arange(179, 180, step=1)
 
     sinogram = torch.zeros((len(t), len(theta)))
     for i, x in enumerate(t):
