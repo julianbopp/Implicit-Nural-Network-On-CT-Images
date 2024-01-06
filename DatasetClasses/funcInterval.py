@@ -1,3 +1,7 @@
+from functools import total_ordering
+
+
+@total_ordering
 class FuncInterval:
     def __init__(
         self, dim, start, end, x_sign=None, y_sign=None, x_dist=None, y_dist=None
@@ -56,3 +60,9 @@ class FuncInterval:
             )
 
             return interval_a, interval_b
+
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+
+    def __lt__(self, other):
+        return self.start < other.start
