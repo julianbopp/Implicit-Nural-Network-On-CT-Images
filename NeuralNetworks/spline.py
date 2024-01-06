@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 from pykeops.torch import LazyTensor
 from torch import nn
 
+from DatasetClasses.funcInterval import FuncInterval
+
 
 def get_mgrid(sidelen, dim=2):
     """
@@ -208,6 +210,7 @@ class SplineNetwork(nn.Module):
         x = control_point[0][0]
         y = control_point[0][1]
 
+        # Create and find the intervals for t in which the distance is 1 or 2
         x_bounds_1, y_bounds_1, x_bounds_2, y_bounds_2 = (
             torch.zeros(2),
             torch.zeros(2),
@@ -246,6 +249,97 @@ class SplineNetwork(nn.Module):
         integral = ()
 
         return integral
+
+    def create_intervals_from_bounds(self, dim, bounds1, bounds2):
+        """
+        Usually creates 3 intervals. 2 in bounds2 1 inside bounds1
+        :param bounds1: t bounds for distance < 1
+        :param bounds2: t bounds for distance < 2
+        :return: t intvervals for distance 1 and 2
+        """
+        if dim == "x":
+            interval_a = FuncInterval(
+                dim, torch.min(bounds2), torch.min(bounds1), x_dist=2
+            )
+            interval_b = FuncInterval(
+                dim, torch.min(bounds1), torch.max(bounds1), x_dist=1
+            )
+            interval_c = FuncInterval(
+                dim, torch.max(bounds1), torch.max(bounds2), x_dist=2
+            )
+        elif dim == "y":
+            interval_a = FuncInterval(
+                dim, torch.min(bounds2), torch.min(bounds1), y_dist=2
+            )
+            interval_b = FuncInterval(
+                dim, torch.min(bounds1), torch.max(bounds1), y_dist=1
+            )
+            interval_c = FuncInterval(
+                dim, torch.max(bounds1), torch.max(bounds2), y_dist=2
+            )
+        else:
+            interval_a = FuncInterval(
+                dim, torch.min(bounds2), torch.min(bounds1), x_dist=2, y_dist=2
+            )
+            interval_b = FuncInterval(
+                dim, torch.min(bounds1), torch.max(bounds1), x_dist=1, y_dist=1
+            )
+            interval_c = FuncInterval(
+                dim, torch.max(bounds1), torch.max(bounds2), x_dist=2, y_dist=2
+            )
+
+        return interval_a, interval_b, interval_c
+        pass
+
+    def split_intervals_at_crossing(self, crossing, intervals: list[FuncInterval]):
+        new_intervals = set()
+
+        for interval in intervals:
+            split_int_a, split_int_b = interval.split(crossing)
+            new_intervals.add(split_int_a)
+            new_intervals.add(split_int_b)
+
+        return list(new_intervals)
+
+    def assign_interval_signs(self, slope, crossing, intervals: list[FuncInterval]):
+        """
+        Assigns "neg" or "pos" to interval. Requires intervals to be split at crossing
+        :param slope:
+        :param crossing:
+        :param intervals:
+        :return: intervals with sign
+        """
+
+        for interval in intervals:
+            if interval.end <= crossing and slope > 0:
+                if interval.dim == "x":
+                    interval.x_sign = "neg"
+                elif interval.dim == "y":
+                    interval.y_sign = "neg"
+            elif interval.end <= crossing and slope < 0:
+                if interval.dim == "x":
+                    interval.x_sign = "pos"
+                elif interval.dim == "y":
+                    interval.y_sign = "pos"
+            elif interval.start >= crossing and slope > 0:
+                if interval.dim == "x":
+                    interval.x_sign = "pos"
+                elif interval.dim == "y":
+                    interval.y_sign = "pos"
+            elif interval.start >= crossing and slope < 0:
+                if interval.dim == "x":
+                    interval.x_sign = "neg"
+                elif interval.dim == "y":
+                    interval.y_sign = "neg"
+
+        return intervals
+
+    def combine_x_y_intervals(
+        self, x_intervals: list[FuncInterval], y_intervals: list[FuncInterval]
+    ):
+        for x_interval in x_intervals():
+            pass
+        pass
 
 
 device = (
