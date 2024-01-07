@@ -5,6 +5,7 @@ from pykeops.torch import LazyTensor
 from torch import nn
 
 from DatasetClasses.funcInterval import FuncInterval
+from DatasetClasses.integrals import *
 
 
 def get_mgrid(sidelen, dim=2):
@@ -187,16 +188,14 @@ class SplineNetwork(nn.Module):
         line_bias = t_min
 
         # 3. Integrate all control points close to the line
-        integrals = torch.zeros(indices.shape)
-        for i, ind in enumerate(indices):
-            integrals[i] = (
+        integral = 0
+        for ind in indices:
+            integral = integral + (
                 self.integrate_control_point(line_slope, line_bias, control_points[ind])
                 * self.weights[ind]
             )
 
-        integrals = torch.nan_to_num(integrals, nan=0.0)
-        sum = integrals.sum()
-        return sum
+        return integral
 
     def integrate_control_point(self, slope, bias, control_point):
         h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
@@ -237,16 +236,26 @@ class SplineNetwork(nn.Module):
         y_bounds_1[y_bounds_1 > 1] = 1
         y_bounds_2[y_bounds_2 > 1] = 1
 
-        lower_max_2, ind_lower_max_2 = torch.max(
-            torch.tensor([x_bounds_2[0], y_bounds_2[0]]), dim=0
-        )
-        lower_min_1 = torch.min(torch.tensor([x_bounds_1[0], y_bounds_1[0]]))
-        lower_max_1 = torch.max(torch.tensor([x_bounds_1[0], y_bounds_1[0]]))
-        upper_min_1 = torch.min(torch.tensor([x_bounds_1[1], y_bounds_1[1]]))
-        upper_max_1 = torch.max(torch.tensor([x_bounds_1[1], y_bounds_1[1]]))
-        upper_min_2 = torch.min(torch.tensor([x_bounds_2[1], y_bounds_2[1]]))
-        upper_max_2 = torch.max(torch.tensor([x_bounds_2[1], y_bounds_2[1]]))
-        integral = ()
+        a, b, c = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
+        d, e, f = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
+
+        x_list = [a, b, c]
+        y_list = [d, e, f]
+
+        x_list = self.split_intervals_at_crossing(x_crossing, x_list)
+        y_list = self.split_intervals_at_crossing(y_crossing, y_list)
+
+        x_list = self.assign_interval_signs(slope[0], x_crossing, x_list)
+        y_list = self.assign_interval_signs(slope[1], y_crossing, y_list)
+
+        combined_list = self.combine_x_y_intervals(x_list, y_list)
+
+        # self, interval: FuncInterval, slope, bias, control_point
+        integral = 0
+        for interval in combined_list:
+            integral = integral + self.apply_function_for_interval(
+                interval, slope, bias, [x, y]
+            )
 
         return integral
 
@@ -292,14 +301,17 @@ class SplineNetwork(nn.Module):
         pass
 
     def split_intervals_at_crossing(self, crossing, intervals: list[FuncInterval]):
-        new_intervals = set()
+        new_intervals = []
 
         for interval in intervals:
             split_int_a, split_int_b = interval.split(crossing)
-            new_intervals.add(split_int_a)
-            new_intervals.add(split_int_b)
+            if split_int_a == interval and split_int_b == interval:
+                new_intervals.append(interval)
+            else:
+                new_intervals.append(split_int_a)
+                new_intervals.append(split_int_b)
 
-        return list(new_intervals)
+        return new_intervals
 
     def assign_interval_signs(self, slope, crossing, intervals: list[FuncInterval]):
         """
@@ -337,9 +349,118 @@ class SplineNetwork(nn.Module):
     def combine_x_y_intervals(
         self, x_intervals: list[FuncInterval], y_intervals: list[FuncInterval]
     ):
-        for x_interval in x_intervals():
-            pass
-        pass
+        stack = sorted(x_intervals + y_intervals, reverse=True)
+
+        combined_list = []
+        while len(stack) > 1:
+            first = stack.pop()
+            second = stack.pop()
+
+            if first.dim == second.dim:
+                if first.end <= second.start:
+                    stack.append(second)
+            elif first == second:
+                # Intervals cover the same range and can be combined
+                joint_interval = first.join(second)
+                combined_list.append(joint_interval)
+            elif first.end <= second.start:
+                # No overlap, throw away first, put back second
+                stack.append(second)
+            elif first.start == second.start:
+                # Intervals overlap at start, append shared length, put back rest
+                if first.end > second.end:
+                    # Make first interval always the smallest
+                    first, second = second, first
+
+                shortened_interval = second.modify_length(first.start, first.end)
+                joint_interval = first.join(shortened_interval)
+                combined_list.append(joint_interval)
+
+                rest_interval = second.modify_length(first.end, second.end)
+                stack.append(rest_interval)
+            elif first.end < second.end:
+                # Also first.start < second.start
+                # Partial overlap, throw away first part, append shared part, put back rest
+                first_shared_interval = first.modify_length(second.start, first.end)
+                second_shared_interval = second.modify_length(second.start, first.end)
+                joint_interval = first_shared_interval.join(second_shared_interval)
+                combined_list.append(joint_interval)
+
+                rest_interval = second.modify_length(first.end, second.end)
+                stack.append(rest_interval)
+            else:
+                # first.end >= second.end
+                # Full overlap, throw first non-shared part, append shared part, put back rest
+
+                first_shared_interval = first.modify_length(second.start, second.end)
+                joint_interval = first_shared_interval.join(second)
+                combined_list.append(joint_interval)
+
+                rest_interval = first.modify_length(second.end, first.end)
+                stack.append(rest_interval)
+        return combined_list
+
+    def apply_function_for_interval(
+        self, interval: FuncInterval, slope, bias, control_point
+    ):
+        x_sign = interval.x_sign
+        y_sign = interval.x_sign
+        x_dist = interval.x_dist
+        y_dist = interval.y_dist
+
+        a = slope[0]
+        b = bias[0]
+        x = control_point[0]
+        c = slope[1]
+        d = bias[1]
+        y = control_point[1]
+
+        if x_sign == "neg":
+            if x_dist == 2:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int01(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int02(a, b, c, d, x, y, interval.start, interval.end)
+                else:
+                    if y_sign == "neg":
+                        return int03(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int04(a, b, c, d, x, y, interval.start, interval.end)
+            else:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int05(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int06(a, b, c, d, x, y, interval.start, interval.end)
+                else:
+                    if y_sign == "neg":
+                        return int07(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int08(a, b, c, d, x, y, interval.start, interval.end)
+        else:
+            if x_dist == 2:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int09(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int10(a, b, c, d, x, y, interval.start, interval.end)
+                else:
+                    if y_sign == "neg":
+                        return int11(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int12(a, b, c, d, x, y, interval.start, interval.end)
+            else:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int13(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int14(a, b, c, d, x, y, interval.start, interval.end)
+                else:
+                    if y_sign == "neg":
+                        return int15(a, b, c, d, x, y, interval.start, interval.end)
+                    else:
+                        return int16(a, b, c, d, x, y, interval.start, interval.end)
 
 
 device = (
@@ -356,8 +477,8 @@ if TEST_INTEGRATE:
     n = 32
     model = SplineNetwork(n)
 
-    t = torch.linspace(-0.5, -0.25, steps=30)
-    theta = torch.arange(179, 180, step=1)
+    t = torch.linspace(-0.4, -0.25, steps=30)
+    theta = torch.arange(45, 180, step=1)
 
     sinogram = torch.zeros((len(t), len(theta)))
     for i, x in enumerate(t):
