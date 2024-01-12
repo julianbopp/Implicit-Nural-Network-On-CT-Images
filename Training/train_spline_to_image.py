@@ -21,11 +21,11 @@ spline_network = SplineNetwork(padded_N)
 optim = torch.optim.Adam(lr=1e-2, params=spline_network.parameters())
 
 sampled_ground_truth, _ = lodopabSet.sample_image(
-    model_input.unsqueeze(0).unsqueeze(0).cuda()
+    model_input.unsqueeze(0).unsqueeze(0).cpu()
 )
 
 sampled_ground_truth = sampled_ground_truth.squeeze().unsqueeze(-1).cpu()
-training_steps = 1000
+training_steps = 100
 spline_network.train()
 for step in range(training_steps):
     print(f"training step: {step}")
