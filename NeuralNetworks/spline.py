@@ -1,7 +1,9 @@
 import math
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from pykeops.torch import LazyTensor
+from skimage.transform import radon
 from torch import nn
 
 from DatasetClasses.funcInterval import FuncInterval
@@ -130,6 +132,9 @@ class SplineNetwork(nn.Module):
         :param theta: Angle of rotation in degrees
         :return: Integral along line specified by z and theta
         """
+        device = z.device
+        if theta == 0 or theta == 90 or theta == 180:
+            return 0
 
         # 0. Find line slope and normal of slope
         # 1. Find all control points that are close to the line
@@ -141,7 +146,7 @@ class SplineNetwork(nn.Module):
         threshold_y = 2 * h_y
 
         # Transform degree into radians and compute rotation matrix
-        phi = torch.tensor(theta * math.pi / 180)
+        phi = torch.tensor(theta * math.pi / 180, device=device)
         s = torch.sin(phi)
         c = torch.cos(phi)
 
@@ -150,10 +155,11 @@ class SplineNetwork(nn.Module):
         ).T  # .T yields counterclockwise rotation
 
         # Calculate the normal to the line (same direction as projection plane)
-        normal = torch.tensor([[0.0], [z]], dtype=torch.float32)
+        # case z = 0
+        normal = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
         normal = torch.matmul(rot, normal)
 
-        control_points = self.control_points
+        control_points = self.control_points.to(device)
 
         projections = (
             torch.matmul(control_points, normal)
@@ -162,39 +168,63 @@ class SplineNetwork(nn.Module):
 
         distances = torch.abs(projections - normal.T)
         indices = torch.all(
-            distances <= torch.tensor([threshold_x, threshold_y]), dim=1
+            distances <= torch.tensor([threshold_x, threshold_y], device=device), dim=1
         ).nonzero()
 
         # 2. Find extrema of line, x- x+ s.t line is x- + t(x+ - x-) for t in [0,1]
-        line_slope = torch.tensor([normal[1], -normal[0]])
+        line_slope = torch.tensor([normal[1], -normal[0]], device=device)
         line_bias = normal.squeeze()
 
         if theta == 0 or theta == 90 or theta == 180:
-            t_min = torch.tensor([-1, z])
-            t_max = torch.tensor([1, z])
-        elif 0 < theta < 90:
-            tx = (-1 - line_bias[0]) / line_slope[0]
-            t_min = line_slope * tx + line_bias
-            ty = (1 - line_bias[0]) / line_slope[1]
-            t_max = line_slope * ty + line_bias
-        elif 90 < theta < 180:
-            tx = (1 - line_bias[0]) / line_slope[0]
-            t_min = line_slope * tx + line_bias
-            ty = (-1 - line_bias[1]) / line_slope[1]
-            t_max = line_slope * ty + line_bias
+            t_min = torch.tensor([-1, z], device=device)
+            t_max = torch.tensor([1, z], device=device)
+        else:
+            t_x_pos = (1 - line_bias[0]) / line_slope[0]
+            t_x_neg = (-1 - line_bias[0]) / line_slope[0]
+            t_y_pos = (1 - line_bias[1]) / line_slope[1]
+            t_y_neg = (-1 - line_bias[1]) / line_slope[1]
 
-        # Normalize line slope and bias
+            line_value_x_pos = line_slope * t_x_pos + line_bias
+            line_value_x_neg = line_slope * t_x_neg + line_bias
+            line_value_y_pos = line_slope * t_y_pos + line_bias
+            line_value_y_neg = line_slope * t_y_neg + line_bias
+
+            t_min_max = []
+            # maybe 1 plus h_x
+            if abs(line_value_x_pos[1]) <= 1:
+                t_min_max.append(line_value_x_pos)
+            if abs(line_value_x_neg[1]) <= 1:
+                t_min_max.append(line_value_x_neg)
+            if abs(line_value_y_pos[0]) <= 1:
+                t_min_max.append(line_value_y_pos)
+            if abs(line_value_y_neg[0]) <= 1:
+                t_min_max.append(line_value_y_neg)
+
+            # Normalize line slope and bias
+        if len(t_min_max) < 2:
+            return 0
+        t_min = t_min_max[0]
+        t_max = t_min_max[1]
+
+        if (t_max - t_min)[0] < 0:
+            t_min, t_max = t_max, t_min
         line_slope = t_max - t_min
         line_bias = t_min
 
         # 3. Integrate all control points close to the line
+        weights = self.weights.to(device)
         integral = 0
         for ind in indices:
-            integral = integral + (
-                self.integrate_control_point(line_slope, line_bias, control_points[ind])
-                * self.weights[ind]
-            )
-
+            if weights[ind] == 0:
+                integral = integral + 0
+            else:
+                integral = integral + (
+                    self.integrate_control_point(
+                        line_slope, line_bias, control_points[ind]
+                    )
+                    * weights[ind]
+                    * torch.norm(line_slope)
+                )
         return integral
 
     def integrate_control_point(self, slope, bias, control_point):
@@ -472,19 +502,38 @@ device = (
 )
 device = "cpu"
 print(f"Using {device} device")
-TEST_INTEGRATE = True
-if TEST_INTEGRATE:
-    n = 32
-    model = SplineNetwork(n)
+if __name__ == "__main__":
+    N = 32
+    model = SplineNetwork(N)
+    model.load_state_dict(torch.load("../spline_image.pt", map_location=device))
+    model.eval()
 
-    t = torch.linspace(-0.4, -0.25, steps=30)
-    theta = torch.arange(45, 180, step=1)
+    interval = torch.linspace(-1, 1, steps=math.ceil(N * 1.0))
+    gridx, gridy = torch.meshgrid(interval, interval, indexing="xy")
+    model_input = torch.stack((gridx, gridy), dim=2)
+    model_output, _ = model(model_input)
+    radon_transform = radon(
+        model_output.view(N, N).cpu().detach().numpy(),
+        theta=np.linspace(0.0, 180.0, N) + 90,
+        circle=False,
+    )
+    plt.imshow(model_output.view(N, N).cpu().detach().numpy())
+    plt.show()
+    plt.imshow(radon_transform)
+    plt.show()
+
+    t = torch.linspace(
+        -math.sqrt(2), math.sqrt(2), steps=math.ceil(N * math.sqrt(2)), device=device
+    )
+    theta = torch.linspace(0.01, 179.99, steps=N, device=device)
 
     sinogram = torch.zeros((len(t), len(theta)))
     for i, x in enumerate(t):
         print(i)
-        for phi in theta:
-            sinogram[i, phi] = model.integrate_line(x, phi)
+        for j, phi in enumerate(theta):
+            print(phi)
+            sinogram[i, j] = model.integrate_line(x, phi)
 
+    torch.save(sinogram, "integral_image.pt")
     plt.imshow(sinogram.cpu().detach().numpy())
     plt.show()
