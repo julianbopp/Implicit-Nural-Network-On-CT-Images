@@ -7,7 +7,7 @@ from skimage.transform import radon
 from torch import nn
 
 from DatasetClasses.funcInterval import FuncInterval
-from DatasetClasses.integrals import *
+from DatasetClasses.explicit_integrals import *
 
 
 def get_mgrid(sidelen, dim=2):
@@ -41,6 +41,7 @@ class SplineNetwork(nn.Module):
         # self.weights.data.uniform_(-1 / N, 1 / N)
 
         self.control_points = get_mgrid(sidelen=N, dim=2).view(-1, 2)
+        #self.control_points[:,1] = - self.control_points[:,1]
 
         if circle:
             self.control_points = self.control_points / math.sqrt(2)
@@ -142,8 +143,8 @@ class SplineNetwork(nn.Module):
         h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
         h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
 
-        threshold_x = 2 * h_x
-        threshold_y = 2 * h_y
+        threshold_x = 2* h_x
+        threshold_y = 2* h_y
 
         # Transform degree into radians and compute rotation matrix
         phi = torch.tensor(theta * math.pi / 180, device=device)
@@ -156,24 +157,30 @@ class SplineNetwork(nn.Module):
 
         # Calculate the normal to the line (same direction as projection plane)
         # case z = 0
-        normal = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
+        normal = torch.tensor([[0.0], [1.0]], dtype=torch.float32, device=device)
         normal = torch.matmul(rot, normal)
 
         control_points = self.control_points.to(device)
+        #control_points[:,1] = - self.control_points[:,1]
+
+
+        line_bias = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
+        line_bias = torch.matmul(rot, line_bias)
 
         projections = (
             torch.matmul(control_points, normal)
             / (torch.linalg.norm(normal).unsqueeze(-1) ** 2)
         ) * normal.T
 
-        distances = torch.abs(projections - normal.T)
+        distances = torch.abs(projections - line_bias.T)
         indices = torch.all(
-            distances <= torch.tensor([threshold_x, threshold_y], device=device), dim=1
+            distances < torch.tensor([threshold_x, threshold_y], device=device), dim=1
         ).nonzero()
 
         # 2. Find extrema of line, x- x+ s.t line is x- + t(x+ - x-) for t in [0,1]
         line_slope = torch.tensor([normal[1], -normal[0]], device=device)
-        line_bias = normal.squeeze()
+
+        line_bias = line_bias.squeeze()
 
         if theta == 0 or theta == 90 or theta == 180:
             t_min = torch.tensor([-1, z], device=device)
@@ -184,10 +191,10 @@ class SplineNetwork(nn.Module):
             t_y_pos = (1 - line_bias[1]) / line_slope[1]
             t_y_neg = (-1 - line_bias[1]) / line_slope[1]
 
-            line_value_x_pos = line_slope * t_x_pos + line_bias
-            line_value_x_neg = line_slope * t_x_neg + line_bias
-            line_value_y_pos = line_slope * t_y_pos + line_bias
-            line_value_y_neg = line_slope * t_y_neg + line_bias
+            line_value_x_pos = (line_slope * t_x_pos + line_bias)
+            line_value_x_neg = (line_slope * t_x_neg + line_bias)
+            line_value_y_pos = (line_slope * t_y_pos + line_bias)
+            line_value_y_neg = (line_slope * t_y_neg + line_bias)
 
             t_min_max = []
             # maybe 1 plus h_x
@@ -223,7 +230,7 @@ class SplineNetwork(nn.Module):
                         line_slope, line_bias, control_points[ind]
                     )
                     * weights[ind]
-                    * torch.norm(line_slope)
+                    * torch.norm(line_slope/h_x)
                 )
         return integral
 
@@ -247,15 +254,15 @@ class SplineNetwork(nn.Module):
             torch.zeros(2),
         )
 
-        x_bounds_1[0] = torch.nn.functional.relu((-h_x + x - bias[0]) / slope[0])
-        x_bounds_1[1] = torch.nn.functional.relu((h_x + x - bias[0]) / slope[0])
+        x_bounds_1[0] = torch.nn.functional.relu((-1*h_x + x - bias[0]) / slope[0])
+        x_bounds_1[1] = torch.nn.functional.relu((1*h_x + x - bias[0]) / slope[0])
         x_bounds_2[0] = torch.nn.functional.relu((-2 * h_x + x - bias[0]) / slope[0])
         x_bounds_2[1] = torch.nn.functional.relu((2 * h_x + x - bias[0]) / slope[0])
 
         x_crossing = (x - bias[0]) / slope[0]
 
-        y_bounds_1[0] = torch.nn.functional.relu((-h_y + y - bias[1]) / slope[1])
-        y_bounds_1[1] = torch.nn.functional.relu((h_y + y - bias[1]) / slope[1])
+        y_bounds_1[0] = torch.nn.functional.relu((-1*h_y + y - bias[1]) / slope[1])
+        y_bounds_1[1] = torch.nn.functional.relu((1*h_y + y - bias[1]) / slope[1])
         y_bounds_2[0] = torch.nn.functional.relu((-2 * h_y + y - bias[1]) / slope[1])
         y_bounds_2[1] = torch.nn.functional.relu((2 * h_y + y - bias[1]) / slope[1])
 
@@ -266,11 +273,14 @@ class SplineNetwork(nn.Module):
         y_bounds_1[y_bounds_1 > 1] = 1
         y_bounds_2[y_bounds_2 > 1] = 1
 
-        a, b, c = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
-        d, e, f = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
+        # It can happen that the bounds are not in start, end order, therefore sort
+        x_bounds_1, _ = torch.sort(x_bounds_1)
+        x_bounds_2, _ = torch.sort(x_bounds_2)
+        y_bounds_1, _ = torch.sort(y_bounds_1)
+        y_bounds_2, _ = torch.sort(y_bounds_2)
 
-        x_list = [a, b, c]
-        y_list = [d, e, f]
+        x_list = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
+        y_list = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
 
         x_list = self.split_intervals_at_crossing(x_crossing, x_list)
         y_list = self.split_intervals_at_crossing(y_crossing, y_list)
@@ -283,11 +293,14 @@ class SplineNetwork(nn.Module):
         # self, interval: FuncInterval, slope, bias, control_point
         integral = 0
         for interval in combined_list:
-            integral = integral + self.apply_function_for_interval(
+
+            integral = integral + (self.apply_function_for_interval(
                 interval, slope, bias, [x, y]
-            )
+            ))
+
 
         return integral
+
 
     def create_intervals_from_bounds(self, dim, bounds1, bounds2):
         """
@@ -327,8 +340,14 @@ class SplineNetwork(nn.Module):
                 dim, torch.max(bounds1), torch.max(bounds2), x_dist=2, y_dist=2
             )
 
-        return interval_a, interval_b, interval_c
-        pass
+        return_list = []
+        if interval_a.start != interval_a.end:
+            return_list.append(interval_a)
+        if interval_b.start != interval_b.end:
+            return_list.append(interval_b)
+        if interval_c.start != interval_c.end:
+            return_list.append(interval_c)
+        return return_list
 
     def split_intervals_at_crossing(self, crossing, intervals: list[FuncInterval]):
         new_intervals = []
@@ -434,63 +453,68 @@ class SplineNetwork(nn.Module):
         self, interval: FuncInterval, slope, bias, control_point
     ):
         x_sign = interval.x_sign
-        y_sign = interval.x_sign
+        y_sign = interval.y_sign
         x_dist = interval.x_dist
         y_dist = interval.y_dist
 
-        a = slope[0]
-        b = bias[0]
-        x = control_point[0]
-        c = slope[1]
-        d = bias[1]
-        y = control_point[1]
+        h = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        #h=1
+        a = slope[0]/math.sqrt(h)
+        b = bias[0]/h
+        x = control_point[0]/h
+        c = slope[1]/math.sqrt(h)
+        d = bias[1]/h
+        y = control_point[1]/h
+
+        start = interval.start/math.sqrt(h)
+        end = interval.end/math.sqrt(h)
 
         if x_sign == "neg":
             if x_dist == 2:
                 if y_sign == "neg":
                     if y_dist == 2:
-                        return int01(a, b, c, d, x, y, interval.start, interval.end)
+                        return int01(a, b, c, d, x, y, start, end)
                     else:
-                        return int02(a, b, c, d, x, y, interval.start, interval.end)
+                        return int02(a, b, c, d, x, y, start, end)
                 else:
-                    if y_sign == "neg":
-                        return int03(a, b, c, d, x, y, interval.start, interval.end)
+                    if y_dist == 1:
+                        return int03(a, b, c, d, x, y, start, end)
                     else:
-                        return int04(a, b, c, d, x, y, interval.start, interval.end)
+                        return int04(a, b, c, d, x, y, start, end)
             else:
                 if y_sign == "neg":
                     if y_dist == 2:
-                        return int05(a, b, c, d, x, y, interval.start, interval.end)
+                        return int05(a, b, c, d, x, y, start, end)
                     else:
-                        return int06(a, b, c, d, x, y, interval.start, interval.end)
+                        return int06(a, b, c, d, x, y, start, end)
                 else:
-                    if y_sign == "neg":
-                        return int07(a, b, c, d, x, y, interval.start, interval.end)
+                    if y_dist == 1:
+                        return int07(a, b, c, d, x, y, start, end)
                     else:
-                        return int08(a, b, c, d, x, y, interval.start, interval.end)
+                        return int08(a, b, c, d, x, y, start, end)
         else:
-            if x_dist == 2:
+            if x_dist == 1:
                 if y_sign == "neg":
                     if y_dist == 2:
-                        return int09(a, b, c, d, x, y, interval.start, interval.end)
+                        return int09(a, b, c, d, x, y, start, end)
                     else:
-                        return int10(a, b, c, d, x, y, interval.start, interval.end)
+                        return int10(a, b, c, d, x, y, start, end)
                 else:
-                    if y_sign == "neg":
-                        return int11(a, b, c, d, x, y, interval.start, interval.end)
+                    if y_dist == 1:
+                        return int11(a, b, c, d, x, y, start, end)
                     else:
-                        return int12(a, b, c, d, x, y, interval.start, interval.end)
+                        return int12(a, b, c, d, x, y, start, end)
             else:
                 if y_sign == "neg":
                     if y_dist == 2:
-                        return int13(a, b, c, d, x, y, interval.start, interval.end)
+                        return int13(a, b, c, d, x, y, start, end)
                     else:
-                        return int14(a, b, c, d, x, y, interval.start, interval.end)
+                        return int14(a, b, c, d, x, y, start, end)
                 else:
-                    if y_sign == "neg":
-                        return int15(a, b, c, d, x, y, interval.start, interval.end)
+                    if y_dist == 1:
+                        return int15(a, b, c, d, x, y, start, end)
                     else:
-                        return int16(a, b, c, d, x, y, interval.start, interval.end)
+                        return int16(a, b, c, d, x, y, start, end)
 
 
 device = (
@@ -514,7 +538,7 @@ if __name__ == "__main__":
     model_output, _ = model(model_input)
     radon_transform = radon(
         model_output.view(N, N).cpu().detach().numpy(),
-        theta=np.linspace(0.0, 180.0, N) + 90,
+        theta=np.linspace(0.0, 180.0, N)-90,
         circle=False,
     )
     plt.imshow(model_output.view(N, N).cpu().detach().numpy())
