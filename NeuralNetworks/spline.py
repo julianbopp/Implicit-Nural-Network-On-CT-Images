@@ -10,6 +10,65 @@ from DatasetClasses.funcInterval import FuncInterval
 from DatasetClasses.explicit_integrals import *
 
 
+
+# Given alpha and h, return the solution of 
+#    |t*n - alpha| = h
+# where the two t solutions are given in increasing order
+def find_interval(alpha, n, h):
+    A_tilde = n**2
+    B_tilde = 2*n*alpha 
+    C_tilde1 = alpha**2 - h**2
+    delta = B_tilde**2 - 4*A_tilde*C_tilde1
+    if torch.abs(delta)<1e-4:
+        delta = delta*0.
+    t_p = (-B_tilde + torch.sqrt(delta))/(2*A_tilde)
+    t_m = (-B_tilde - torch.sqrt(delta))/(2*A_tilde)
+    return t_m, t_p
+
+# Given the 1d-position of a control point and the 1d-position of another point, 
+# return the coefficients of the spline to get the value at position X
+def get_spline_coeffs(X_ctrl,X,h):
+    dist = torch.abs(X_ctrl-X)/h
+    if dist < 1.:
+        a = 3./2.
+        b = -5./2.
+        c = 0.
+        d = 1.
+    elif dist < 2.:
+        a = -1./2.
+        b = 5./2.
+        c = -4.
+        d = 2.
+    else:
+        a = 0
+        b = 0
+        c = 0
+        d = 0
+    return a, b, c, d
+
+
+def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
+    int_value =  (t1**7-t0**7)*Ax*Ay/7
+    int_value += (t1**6-t0**6)*(Ax*By + Bx*Ay)/6
+    int_value += (t1**5-t0**5)*(Ax*Cy + Bx*By + Cx*Ay)/5
+    int_value += (t1**4-t0**4)*(Ax*Dy + Bx*Cy + Cx*By + Dx*Ay)/4
+    int_value += (t1**3-t0**3)*(Bx*Dy +Cx*Cy + Dx*By)/3
+    int_value += (t1**2-t0**2)*(Cx*Dy + Dx*Cy)/2
+    int_value += (t1-t0)*(Dx*Dy)
+    return int_value
+
+
+# Return coefficients A, B, C and D for integration
+# n is the normal direction in the wanted axis
+# h is the distance betwee ctrl point
+# alpha is (x0 - C), where x0 is the staring point of the line and Cx is the position of the ctrl point in the wanted axis
+def coeff_integration(a,b,c,d,n,h,alpha):
+    A = a*n**3/(h**3)
+    B = 3*a*n**2*alpha/(h**3) + b*n**2/(h**2)
+    C = a*3*n*alpha**2/(h**3) + b*2*n*alpha/(h**2) + c*n/(h)
+    D = a*alpha**3/(h**3)+b*alpha**2/(h**2)+c*alpha/(h)+d
+    return A, B, C, D
+
 def get_mgrid(sidelen, dim=2):
     """
     Generates a flattened grid of (x,y) coordinates in a range of -1 to 1, Shape: (sidelen, dim)
@@ -99,6 +158,7 @@ class SplineNetwork(nn.Module):
 
         return output, x
 
+
     def cubic_conv(self, s):
         """
         Calculate convolutional kernel.
@@ -110,7 +170,7 @@ class SplineNetwork(nn.Module):
         result = torch.zeros(s.shape, device=device)
 
         cond1 = (0 <= torch.abs(s)) & (torch.abs(s) < 1)
-        cond2 = (1 < torch.abs(s)) & (torch.abs(s) < 2)
+        cond2 = (1 <= torch.abs(s)) & (torch.abs(s) < 2)
         cond3 = 2 < torch.abs(s)
 
         result[cond1] = (
@@ -134,430 +194,127 @@ class SplineNetwork(nn.Module):
         :return: Integral along line specified by z and theta
         """
         device = z.device
-        if theta == 0 or theta == 90 or theta == 180:
-            return 0
-
         # 0. Find line slope and normal of slope
         # 1. Find all control points that are close to the line
         #   - project all control points to normal of slope to find distance
         h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
         h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
-
-        threshold_x = 2* h_x
-        threshold_y = 2* h_y
+        threshold = torch.max(2* h_x, 2* h_y)
+        control_points = self.control_points.to(device)
 
         # Transform degree into radians and compute rotation matrix
-        phi = torch.tensor(theta * math.pi / 180, device=device)
-        s = torch.sin(phi)
-        c = torch.cos(phi)
+        theta_rad = (theta * math.pi / 180.).to(device)
+        s = torch.sin(theta_rad)
+        c = torch.cos(theta_rad)
 
         rot = torch.stack(
             [torch.stack([c, s]), torch.stack([-s, c])]
-        ).T  # .T yields counterclockwise rotation
-
-        # Calculate the normal to the line (same direction as projection plane)
-        # case z = 0
-        normal = torch.tensor([[0.0], [1.0]], dtype=torch.float32, device=device)
-        normal = torch.matmul(rot, normal)
-
-        control_points = self.control_points.to(device)
-        #control_points[:,1] = - self.control_points[:,1]
-
-
-        line_bias = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
-        line_bias = torch.matmul(rot, line_bias)
-
-        projections = (
-            torch.matmul(control_points, normal)
-            / (torch.linalg.norm(normal).unsqueeze(-1) ** 2)
-        ) * normal.T
-
-        distances = torch.abs(projections - line_bias.T)
-        indices = torch.all(
-            distances < torch.tensor([threshold_x, threshold_y], device=device), dim=1
-        ).nonzero()
-
-        # 2. Find extrema of line, x- x+ s.t line is x- + t(x+ - x-) for t in [0,1]
-        line_slope = torch.tensor([normal[1], -normal[0]], device=device)
-
-        line_bias = line_bias.squeeze()
-
-        if theta == 0 or theta == 90 or theta == 180:
-            t_min = torch.tensor([-1, z], device=device)
-            t_max = torch.tensor([1, z], device=device)
-        else:
-            t_x_pos = (1 - line_bias[0]) / line_slope[0]
-            t_x_neg = (-1 - line_bias[0]) / line_slope[0]
-            t_y_pos = (1 - line_bias[1]) / line_slope[1]
-            t_y_neg = (-1 - line_bias[1]) / line_slope[1]
-
-            line_value_x_pos = (line_slope * t_x_pos + line_bias)
-            line_value_x_neg = (line_slope * t_x_neg + line_bias)
-            line_value_y_pos = (line_slope * t_y_pos + line_bias)
-            line_value_y_neg = (line_slope * t_y_neg + line_bias)
-
-            t_min_max = []
-            # maybe 1 plus h_x
-            if abs(line_value_x_pos[1]) <= 1:
-                t_min_max.append(line_value_x_pos)
-            if abs(line_value_x_neg[1]) <= 1:
-                t_min_max.append(line_value_x_neg)
-            if abs(line_value_y_pos[0]) <= 1:
-                t_min_max.append(line_value_y_pos)
-            if abs(line_value_y_neg[0]) <= 1:
-                t_min_max.append(line_value_y_neg)
-
-            # Normalize line slope and bias
-        if len(t_min_max) < 2:
-            return 0
-        t_min = t_min_max[0]
-        t_max = t_min_max[1]
-
-        if (t_max - t_min)[0] < 0:
-            t_min, t_max = t_max, t_min
-        line_slope = t_max - t_min
-        line_bias = t_min
-
-        # 3. Integrate all control points close to the line
-        weights = self.weights.to(device)
-        integral = 0
-        for ind in indices:
-            if weights[ind] == 0:
-                integral = integral + 0
-            else:
-                integral = integral + (
-                    self.integrate_control_point(
-                        line_slope, line_bias, control_points[ind]
-                    )
-                    * weights[ind]
-                    * torch.norm(line_slope/h_x)
-                )
-        return integral
-
-    def integrate_control_point(self, slope, bias, control_point):
-        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
-        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
-
-        a = slope[0]
-        b = bias[0]
-        c = slope[1]
-        d = bias[1]
-
-        x = control_point[0][0]
-        y = control_point[0][1]
-
-        # Create and find the intervals for t in which the distance is 1 or 2
-        x_bounds_1, y_bounds_1, x_bounds_2, y_bounds_2 = (
-            torch.zeros(2),
-            torch.zeros(2),
-            torch.zeros(2),
-            torch.zeros(2),
         )
+        control_points_rot = torch.matmul(control_points, rot)
+        
 
-        x_bounds_1[0] = torch.nn.functional.relu((-1*h_x + x - bias[0]) / slope[0])
-        x_bounds_1[1] = torch.nn.functional.relu((1*h_x + x - bias[0]) / slope[0])
-        x_bounds_2[0] = torch.nn.functional.relu((-2 * h_x + x - bias[0]) / slope[0])
-        x_bounds_2[1] = torch.nn.functional.relu((2 * h_x + x - bias[0]) / slope[0])
+        # Calculate the normal and its orthogonal to the line
+        normal = torch.tensor([[0.0], [1.0]], dtype=torch.float32, device=device)
+        # normal = torch.matmul(rot, normal)
+        normal_orth = torch.tensor([[1.0], [0.0]], dtype=torch.float32, device=device)
+        # normal_orth = torch.matmul(rot, normal_orth)
+        # project onto the detector space (so need the orthogonal of the normal!)
+        projections_orth = torch.matmul(control_points_rot, normal_orth)
+        distances = torch.abs(projections_orth - z)
+        indices = (distances.squeeze(1) < threshold).nonzero()
 
-        x_crossing = (x - bias[0]) / slope[0]
+        # For each control points
+        int_value_tot = torch.zeros(1,device=device,dtype=torch.float32)
+        for k in indices:
+            if self.weights[k,0]!=0:
+                # Find values of t for which the line cross the support of the inner and outer splines
+                # In the x direction
+                x0 = z*1.
+                alphax = (x0 - control_points_rot[k,0])        
+                tx1_m,tx1_p = find_interval(alphax, normal[0], h_x)
+                tx2_m,tx2_p = find_interval(alphax, normal[0], 2*h_x)
+                txz_m,txz_p = find_interval(alphax, normal[0], 0)
+                # In the y direction
+                y0 = 0.
+                alphay = (y0 - control_points_rot[k,1])        
+                ty1_m,ty1_p = find_interval(alphay, normal[1], h_y)
+                ty2_m,ty2_p = find_interval(alphay, normal[1], 2*h_y)
+                tyz_m,tyz_p = find_interval(alphay, normal[1], 0)
 
-        y_bounds_1[0] = torch.nn.functional.relu((-1*h_y + y - bias[1]) / slope[1])
-        y_bounds_1[1] = torch.nn.functional.relu((1*h_y + y - bias[1]) / slope[1])
-        y_bounds_2[0] = torch.nn.functional.relu((-2 * h_y + y - bias[1]) / slope[1])
-        y_bounds_2[1] = torch.nn.functional.relu((2 * h_y + y - bias[1]) / slope[1])
+                if torch.abs(txz_m-txz_p)>1e-6 or torch.abs(tyz_m-tyz_p)>1e-6:
+                    print("##################")
+                    print("ERROR: spline crossing 0 has more than one value, shouldn't happen!")
+                    print("##################")
 
-        y_crossing = (y - bias[1]) / slope[1]
-
-        x_bounds_1[x_bounds_1 > 1] = 1
-        x_bounds_2[x_bounds_2 > 1] = 1
-        y_bounds_1[y_bounds_1 > 1] = 1
-        y_bounds_2[y_bounds_2 > 1] = 1
-
-        # It can happen that the bounds are not in start, end order, therefore sort
-        x_bounds_1, _ = torch.sort(x_bounds_1)
-        x_bounds_2, _ = torch.sort(x_bounds_2)
-        y_bounds_1, _ = torch.sort(y_bounds_1)
-        y_bounds_2, _ = torch.sort(y_bounds_2)
-
-        x_list = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
-        y_list = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
-
-        x_list = self.split_intervals_at_crossing(x_crossing, x_list)
-        y_list = self.split_intervals_at_crossing(y_crossing, y_list)
-
-        x_list = self.assign_interval_signs(slope[0], x_crossing, x_list)
-        y_list = self.assign_interval_signs(slope[1], y_crossing, y_list)
-
-        combined_list = self.combine_x_y_intervals(x_list, y_list)
-
-        # self, interval: FuncInterval, slope, bias, control_point
-        integral = 0
-        for interval in combined_list:
-
-            integral = integral + (self.apply_function_for_interval(
-                interval, slope, bias, [x, y]
-            ))
-
-
-        return integral
-
-
-    def create_intervals_from_bounds(self, dim, bounds1, bounds2):
-        """
-        Usually creates 3 intervals. 2 in bounds2 1 inside bounds1
-        :param bounds1: t bounds for distance < 1
-        :param bounds2: t bounds for distance < 2
-        :return: t intvervals for distance 1 and 2
-        """
-        if dim == "x":
-            interval_a = FuncInterval(
-                dim, torch.min(bounds2), torch.min(bounds1), x_dist=2
-            )
-            interval_b = FuncInterval(
-                dim, torch.min(bounds1), torch.max(bounds1), x_dist=1
-            )
-            interval_c = FuncInterval(
-                dim, torch.max(bounds1), torch.max(bounds2), x_dist=2
-            )
-        elif dim == "y":
-            interval_a = FuncInterval(
-                dim, torch.min(bounds2), torch.min(bounds1), y_dist=2
-            )
-            interval_b = FuncInterval(
-                dim, torch.min(bounds1), torch.max(bounds1), y_dist=1
-            )
-            interval_c = FuncInterval(
-                dim, torch.max(bounds1), torch.max(bounds2), y_dist=2
-            )
-        else:
-            interval_a = FuncInterval(
-                dim, torch.min(bounds2), torch.min(bounds1), x_dist=2, y_dist=2
-            )
-            interval_b = FuncInterval(
-                dim, torch.min(bounds1), torch.max(bounds1), x_dist=1, y_dist=1
-            )
-            interval_c = FuncInterval(
-                dim, torch.max(bounds1), torch.max(bounds2), x_dist=2, y_dist=2
-            )
-
-        return_list = []
-        if interval_a.start != interval_a.end:
-            return_list.append(interval_a)
-        if interval_b.start != interval_b.end:
-            return_list.append(interval_b)
-        if interval_c.start != interval_c.end:
-            return_list.append(interval_c)
-        return return_list
-
-    def split_intervals_at_crossing(self, crossing, intervals: list[FuncInterval]):
-        new_intervals = []
-
-        for interval in intervals:
-            split_int_a, split_int_b = interval.split(crossing)
-            if split_int_a == interval and split_int_b == interval:
-                new_intervals.append(interval)
-            else:
-                new_intervals.append(split_int_a)
-                new_intervals.append(split_int_b)
-
-        return new_intervals
-
-    def assign_interval_signs(self, slope, crossing, intervals: list[FuncInterval]):
-        """
-        Assigns "neg" or "pos" to interval. Requires intervals to be split at crossing
-        :param slope:
-        :param crossing:
-        :param intervals:
-        :return: intervals with sign
-        """
-
-        for interval in intervals:
-            if interval.end <= crossing and slope > 0:
-                if interval.dim == "x":
-                    interval.x_sign = "neg"
-                elif interval.dim == "y":
-                    interval.y_sign = "neg"
-            elif interval.end <= crossing and slope < 0:
-                if interval.dim == "x":
-                    interval.x_sign = "pos"
-                elif interval.dim == "y":
-                    interval.y_sign = "pos"
-            elif interval.start >= crossing and slope > 0:
-                if interval.dim == "x":
-                    interval.x_sign = "pos"
-                elif interval.dim == "y":
-                    interval.y_sign = "pos"
-            elif interval.start >= crossing and slope < 0:
-                if interval.dim == "x":
-                    interval.x_sign = "neg"
-                elif interval.dim == "y":
-                    interval.y_sign = "neg"
-
-        return intervals
-
-    def combine_x_y_intervals(
-        self, x_intervals: list[FuncInterval], y_intervals: list[FuncInterval]
-    ):
-        stack = sorted(x_intervals + y_intervals, reverse=True)
-
-        combined_list = []
-        while len(stack) > 1:
-            first = stack.pop()
-            second = stack.pop()
-
-            if first.dim == second.dim:
-                if first.end <= second.start:
-                    stack.append(second)
-            elif first == second:
-                # Intervals cover the same range and can be combined
-                joint_interval = first.join(second)
-                combined_list.append(joint_interval)
-            elif first.end <= second.start:
-                # No overlap, throw away first, put back second
-                stack.append(second)
-            elif first.start == second.start:
-                # Intervals overlap at start, append shared length, put back rest
-                if first.end > second.end:
-                    # Make first interval always the smallest
-                    first, second = second, first
-
-                shortened_interval = second.modify_length(first.start, first.end)
-                joint_interval = first.join(shortened_interval)
-                combined_list.append(joint_interval)
-
-                rest_interval = second.modify_length(first.end, second.end)
-                stack.append(rest_interval)
-            elif first.end < second.end:
-                # Also first.start < second.start
-                # Partial overlap, throw away first part, append shared part, put back rest
-                first_shared_interval = first.modify_length(second.start, first.end)
-                second_shared_interval = second.modify_length(second.start, first.end)
-                joint_interval = first_shared_interval.join(second_shared_interval)
-                combined_list.append(joint_interval)
-
-                rest_interval = second.modify_length(first.end, second.end)
-                stack.append(rest_interval)
-            else:
-                # first.end >= second.end
-                # Full overlap, throw first non-shared part, append shared part, put back rest
-
-                first_shared_interval = first.modify_length(second.start, second.end)
-                joint_interval = first_shared_interval.join(second)
-                combined_list.append(joint_interval)
-
-                rest_interval = first.modify_length(second.end, first.end)
-                stack.append(rest_interval)
-        return combined_list
-
-    def apply_function_for_interval(
-        self, interval: FuncInterval, slope, bias, control_point
-    ):
-        x_sign = interval.x_sign
-        y_sign = interval.y_sign
-        x_dist = interval.x_dist
-        y_dist = interval.y_dist
-
-        h = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
-        #h=1
-        a = slope[0]/math.sqrt(h)
-        b = bias[0]/h
-        x = control_point[0]/h
-        c = slope[1]/math.sqrt(h)
-        d = bias[1]/h
-        y = control_point[1]/h
-
-        start = interval.start/math.sqrt(h)
-        end = interval.end/math.sqrt(h)
-
-        if x_sign == "neg":
-            if x_dist == 2:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int01(a, b, c, d, x, y, start, end)
-                    else:
-                        return int02(a, b, c, d, x, y, start, end)
+                # Order all the t values
+                if normal[0].item() == 0:
+                    t_list = torch.sort(torch.concat([ty1_m,ty1_p,ty2_m,ty2_p,tyz_m]))[0]
+                elif normal[1].item() == 0:
+                    t_list = torch.sort(torch.concat([tx1_m,tx1_p,tx2_m,tx2_p,txz_m]))[0]
                 else:
-                    if y_dist == 1:
-                        return int03(a, b, c, d, x, y, start, end)
-                    else:
-                        return int04(a, b, c, d, x, y, start, end)
-            else:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int05(a, b, c, d, x, y, start, end)
-                    else:
-                        return int06(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int07(a, b, c, d, x, y, start, end)
-                    else:
-                        return int08(a, b, c, d, x, y, start, end)
-        else:
-            if x_dist == 1:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int09(a, b, c, d, x, y, start, end)
-                    else:
-                        return int10(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int11(a, b, c, d, x, y, start, end)
-                    else:
-                        return int12(a, b, c, d, x, y, start, end)
-            else:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int13(a, b, c, d, x, y, start, end)
-                    else:
-                        return int14(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int15(a, b, c, d, x, y, start, end)
-                    else:
-                        return int16(a, b, c, d, x, y, start, end)
+                    t_list = torch.sort(torch.concat([tx1_m,tx1_p,tx2_m,tx2_p,txz_m,ty1_m,ty1_p,ty2_m,ty2_p,tyz_m]))[0]
+
+                # Integrate bewteen each interval
+                for ind_interv in range(len(t_list)-1):
+                    # Integrate between t0 abd t1
+                    t0 = t_list[ind_interv]
+                    t1 = t_list[ind_interv+1]
+                    # For that we need to know which spline coefficient to use
+                    # define one point in the interval to know its distance to the center and the sign
+                    x_interv = x0 + 0.5*(t0+t1)*normal[0]
+                    y_interv = y0 + 0.5*(t0+t1)*normal[1]
+                    ax, bx, cx, dx = get_spline_coeffs(control_points_rot[k,0],x_interv, h_x)
+                    ay, by, cy, dy = get_spline_coeffs(control_points_rot[k,1],y_interv, h_y)
+                    # Need that to take into account the abosulte values
+                    sign_x = torch.sign(x_interv - control_points_rot[k,0])
+                    sign_y = torch.sign(y_interv - control_points_rot[k,1])
+                    if sign_x==0:
+                        sign_x = torch.ones_like(sign_x)
+                    if sign_y==0:
+                        sign_y = torch.ones_like(sign_y)
+                    if ax*ay != 0:# if 0 this means that both splines are 0 valued
+                        Ax, Bx, Cx, Dx = coeff_integration(sign_x*ax,bx,sign_x*cx,dx,normal[0],h_x,alphax)
+                        Ay, By, Cy, Dy = coeff_integration(sign_y*ay,by,sign_y*cy,dy,normal[1],h_y,alphay)
+                        # integrate over this interval
+                        int_value = integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1)
+                        int_value_tot += self.weights[k,0]*int_value
+                        # print(int_value)
+                        # TODO: 
+                        # here maybe I'm missing the normalization due to the speed of the 
+                        # line not being constant from one tilt to the other. Anyway, it should
+                        # at most change the value by a smal scaling factor
+        return int_value_tot
+
+                # # Approximation of the integral
+                # h = h_x
+                # N = 1000
+                # lin = np.linspace(t0,t1,N)
+                # int_discr = 0.
+                # int_discr_r1 = 0.
+                # int_discr_r2 = 0.
+                # for tt in range(N):
+                #     sx = (x0 + lin[tt]*normal[0] - control_points[k,0])/h
+                #     sy = (y0 + lin[tt]*normal[1] - control_points[k,1])/h
+                #     int_discr += self.cubic_conv(sx)*self.cubic_conv(sy)
+                # int_discr /= N
+                # int_discr *= t1-t0
+                # print(int_discr)
 
 
-device = (
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
-    else "cpu"
-)
-device = "cpu"
-print(f"Using {device} device")
-if __name__ == "__main__":
-    N = 32
-    model = SplineNetwork(N)
-    model.load_state_dict(torch.load("../spline_image.pt", map_location=device))
-    model.eval()
+            # TODO: forget that the spline is define with absolute value
+            # Include that include two addition value of t, and pass the signa as argument of integrate function
+            # Integrate function needs to be adapted then
 
-    interval = torch.linspace(-1, 1, steps=math.ceil(N * 1.0))
-    gridx, gridy = torch.meshgrid(interval, interval, indexing="xy")
-    model_input = torch.stack((gridx, gridy), dim=2)
-    model_output, _ = model(model_input)
-    radon_transform = radon(
-        model_output.view(N, N).cpu().detach().numpy(),
-        theta=np.linspace(0.0, 180.0, N)-90,
-        circle=False,
-    )
-    plt.imshow(model_output.view(N, N).cpu().detach().numpy())
-    plt.show()
-    plt.imshow(radon_transform)
-    plt.show()
 
-    t = torch.linspace(
-        -math.sqrt(2), math.sqrt(2), steps=math.ceil(N * math.sqrt(2)), device=device
-    )
-    theta = torch.linspace(0.01, 179.99, steps=N, device=device)
+            # # Check that the t values are really point where spline goes to 0
+            # h = h_x
+            # for kk in range(len(t_list)):
+            #     tt = t_list[kk]
+            #     xx = x0 + tt*normal[0]
+            #     ssx = (xx - control_points[k,0])/h
+            #     tt = t_list[kk]
+            #     xx = y0 + tt*normal[1]
+            #     ssy = (xx - control_points[k,1])/h
+            #     ss = torch.min(torch.concat([torch.abs(self.cubic_conv(ssx)),torch.abs(self.cubic_conv(ssy))]))
+            #     print(ss)
 
-    sinogram = torch.zeros((len(t), len(theta)))
-    for i, x in enumerate(t):
-        print(i)
-        for j, phi in enumerate(theta):
-            print(phi)
-            sinogram[i, j] = model.integrate_line(x, phi)
-
-    torch.save(sinogram, "integral_image.pt")
-    plt.imshow(sinogram.cpu().detach().numpy())
-    plt.show()
