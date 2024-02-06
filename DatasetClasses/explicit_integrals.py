@@ -38,7 +38,7 @@ def int01(a,b,c,d,x,y,start,end):
 def int02(a,b,c,d,x,y,start,end):
     # Xneg2, Yneg1
     ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([1,-5/2,-3/2,0])
+    bk = torch.tensor([1,0,-5/2,-3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -53,7 +53,7 @@ def int02(a,b,c,d,x,y,start,end):
 def int03(a,b,c,d,x,y,start,end):
     # Xneg2, Ypos1
     ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([1,-5/2,3/2,0])
+    bk = torch.tensor([1,0,-5/2,3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -82,7 +82,7 @@ def int04(a,b,c,d,x,y,start,end):
 
 def int05(a,b,c,d,x,y,start,end):
     # Xneg1, Yneg2
-    ak = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,-3/2])
     bk = torch.tensor([2,4,5/2,1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
@@ -97,8 +97,8 @@ def int05(a,b,c,d,x,y,start,end):
 
 def int06(a,b,c,d,x,y,start,end):
     # Xneg1, Yneg1
-    ak = torch.tensor([1,-5/2,-3/2,0])
-    bk = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,-3/2])
+    bk = torch.tensor([1,0,-5/2,-3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -112,8 +112,8 @@ def int06(a,b,c,d,x,y,start,end):
 
 def int07(a,b,c,d,x,y,start,end):
     # Xneg1, Ypos1
-    ak = torch.tensor([1,-5/2,-3/2,0])
-    bk = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,-3/2])
+    bk = torch.tensor([1,0,-5/2,3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -127,7 +127,7 @@ def int07(a,b,c,d,x,y,start,end):
 
 def int08(a,b,c,d,x,y,start,end):
     # Xneg1, Ypos2
-    ak = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,-3/2])
     bk = torch.tensor([2,-4,5/2,-1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
@@ -142,7 +142,7 @@ def int08(a,b,c,d,x,y,start,end):
 
 def int09(a,b,c,d,x,y,start,end):
     # Xpos1, Yneg2
-    ak = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
     bk = torch.tensor([2,4,5/2,1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
@@ -157,8 +157,8 @@ def int09(a,b,c,d,x,y,start,end):
 
 def int10(a,b,c,d,x,y,start,end):
     # Xpos1, Yneg1
-    ak = torch.tensor([1,-5/2,3/2,0])
-    bk = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
+    bk = torch.tensor([1,0,-5/2,-3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -172,8 +172,8 @@ def int10(a,b,c,d,x,y,start,end):
 
 def int11(a,b,c,d,x,y,start,end):
     # Xpos1, Ypos1
-    ak = torch.tensor([1,-5/2,3/2,0])
-    bk = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
+    bk = torch.tensor([1,0,-5/2,3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -187,7 +187,7 @@ def int11(a,b,c,d,x,y,start,end):
 
 def int12(a,b,c,d,x,y,start,end):
     # Xpos1, Ypos2
-    ak = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
     bk = torch.tensor([2,-4,5/2,-1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
@@ -202,7 +202,7 @@ def int12(a,b,c,d,x,y,start,end):
 
 def int13(a,b,c,d,x,y,start,end):
     # Xpos2, Yneg2
-    ak = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
     bk = torch.tensor([2,4,5/2,1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
@@ -217,8 +217,8 @@ def int13(a,b,c,d,x,y,start,end):
 
 def int14(a,b,c,d,x,y,start,end):
     # Xpos2, Yneg1
-    ak = torch.tensor([1,-5/2,3/2,0])
-    bk = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
+    bk = torch.tensor([1,0,-5/2,-3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -232,8 +232,8 @@ def int14(a,b,c,d,x,y,start,end):
 
 def int15(a,b,c,d,x,y,start,end):
     # Xpos2, Ypos1
-    ak = torch.tensor([1,-5/2,3/2,0])
-    bk = torch.tensor([1,-5/2,-3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
+    bk = torch.tensor([1,0,-5/2,-3/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
     result = 0
@@ -247,7 +247,7 @@ def int15(a,b,c,d,x,y,start,end):
 
 def int16(a,b,c,d,x,y,start,end):
     # Xpos2, Ypos2
-    ak = torch.tensor([1,-5/2,3/2,0])
+    ak = torch.tensor([1,0,-5/2,3/2])
     bk = torch.tensor([2,-4,5/2,-1/2])
     M = 4
     alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
