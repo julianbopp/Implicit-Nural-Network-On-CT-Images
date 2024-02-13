@@ -161,7 +161,7 @@ class SplineNetwork(nn.Module):
         normal = torch.matmul(rot, normal)
 
         control_points = self.control_points.to(device)
-        #control_points[:,1] = - self.control_points[:,1]
+        control_points[:,1] = - self.control_points[:,1]
 
 
         line_bias = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
@@ -230,7 +230,6 @@ class SplineNetwork(nn.Module):
                         line_slope, line_bias, control_points[ind]
                     )
                     * weights[ind]
-                    * torch.norm(line_slope/h_x)
                 )
         return integral
 
@@ -459,62 +458,19 @@ class SplineNetwork(nn.Module):
 
         h = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
         #h=1
-        a = slope[0]/math.sqrt(h)
-        b = bias[0]/h
-        x = control_point[0]/h
-        c = slope[1]/math.sqrt(h)
-        d = bias[1]/h
-        y = control_point[1]/h
+        a = slope[0]
+        b = bias[0]
+        x = control_point[0]
+        c = slope[1]
+        d = bias[1]
+        y = control_point[1]
 
-        start = interval.start/math.sqrt(h)
-        end = interval.end/math.sqrt(h)
+        start = interval.start
+        end = interval.end
 
-        if x_sign == "neg":
-            if x_dist == 2:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int01(a, b, c, d, x, y, start, end)
-                    else:
-                        return int02(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int03(a, b, c, d, x, y, start, end)
-                    else:
-                        return int04(a, b, c, d, x, y, start, end)
-            else:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int05(a, b, c, d, x, y, start, end)
-                    else:
-                        return int06(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int07(a, b, c, d, x, y, start, end)
-                    else:
-                        return int08(a, b, c, d, x, y, start, end)
-        else:
-            if x_dist == 1:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int09(a, b, c, d, x, y, start, end)
-                    else:
-                        return int10(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int11(a, b, c, d, x, y, start, end)
-                    else:
-                        return int12(a, b, c, d, x, y, start, end)
-            else:
-                if y_sign == "neg":
-                    if y_dist == 2:
-                        return int13(a, b, c, d, x, y, start, end)
-                    else:
-                        return int14(a, b, c, d, x, y, start, end)
-                else:
-                    if y_dist == 1:
-                        return int15(a, b, c, d, x, y, start, end)
-                    else:
-                        return int16(a, b, c, d, x, y, start, end)
+        result = integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end)
+
+        return result
 
 
 device = (

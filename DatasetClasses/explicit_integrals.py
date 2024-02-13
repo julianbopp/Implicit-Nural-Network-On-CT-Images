@@ -18,244 +18,56 @@ def compute_alpha_beta(a,b,c,d,x,y):
 
     return alpha, beta
 
+def get_coefficients(x_sign, x_dist, y_sign, y_dist):
+    if x_dist == 1:
+        ak = torch.tensor([1.0, 0.0, -5/2, 3/2])
+    else:
+        ak = torch.tensor([2.0, -4.0, 5/2, -1/2])
 
-def int01(a,b,c,d,x,y,start,end):
-    # Xneg2, Yneg2
-    ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([2,4,5/2,1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
+
+    if y_dist == 1:
+        bk = torch.tensor([1.0, -5 / 2, 0.0, 3 / 2])
+    else:
+        bk = torch.tensor([2.0, -4.0, 5 / 2, -1 / 2])
+
+    if x_sign == "neg":
+        ak = ak * torch.tensor([1.0, -1.0, 1.0, -1.0])
+    if y_sign == "neg":
+        bk = bk * torch.tensor([1.0, -1.0, 1.0, -1.0])
+
+    return ak, bk
+
+def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end):
+    alpha, beta = compute_alpha_beta(a, b, c, d, x, y)
+    ak, bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
+
     result = 0
-    for k in range(M):
-        for i in range(k+1):
-            for kp in range(M):
+    for k in range(4):
+
+        tmp1 = 0
+        for kp in range(4):
+
+            tmp2 = 0
+            for i in range(k+1):
+
+                tmp3 = 0
                 for ip in range(kp+1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp]* beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
+                    tmp3 = tmp3 + beta[ip,kp] * (end ** (ip+i+1) - start ** (ip+i+1)) / (ip+i+1)
+
+                tmp2 = tmp2 + alpha[i,k] * tmp3
+            tmp1 = tmp1 + bk[kp] * 1/h**kp * tmp2
+        result = result + ak[k] * 1/h**k * tmp1
 
     return result
 
 
-def int02(a,b,c,d,x,y,start,end):
-    # Xneg2, Yneg1
-    ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([1,0,-5/2,-3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
 
-    return result
 
-def int03(a,b,c,d,x,y,start,end):
-    # Xneg2, Ypos1
-    ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([1,0,-5/2,3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
+x_sign = "neg"
+y_sign = "neg"
+x_dist = 1
+y_dist = 1
 
-    return result
-
-def int04(a,b,c,d,x,y,start,end):
-    # Xneg2, Ypos2
-    ak = torch.tensor([2,4,5/2,1/2])
-    bk = torch.tensor([2,-4,5/2,-1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int05(a,b,c,d,x,y,start,end):
-    # Xneg1, Yneg2
-    ak = torch.tensor([1,0,-5/2,-3/2])
-    bk = torch.tensor([2,4,5/2,1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int06(a,b,c,d,x,y,start,end):
-    # Xneg1, Yneg1
-    ak = torch.tensor([1,0,-5/2,-3/2])
-    bk = torch.tensor([1,0,-5/2,-3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int07(a,b,c,d,x,y,start,end):
-    # Xneg1, Ypos1
-    ak = torch.tensor([1,0,-5/2,-3/2])
-    bk = torch.tensor([1,0,-5/2,3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int08(a,b,c,d,x,y,start,end):
-    # Xneg1, Ypos2
-    ak = torch.tensor([1,0,-5/2,-3/2])
-    bk = torch.tensor([2,-4,5/2,-1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int09(a,b,c,d,x,y,start,end):
-    # Xpos1, Yneg2
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([2,4,5/2,1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int10(a,b,c,d,x,y,start,end):
-    # Xpos1, Yneg1
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([1,0,-5/2,-3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int11(a,b,c,d,x,y,start,end):
-    # Xpos1, Ypos1
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([1,0,-5/2,3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int12(a,b,c,d,x,y,start,end):
-    # Xpos1, Ypos2
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([2,-4,5/2,-1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int13(a,b,c,d,x,y,start,end):
-    # Xpos2, Yneg2
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([2,4,5/2,1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int14(a,b,c,d,x,y,start,end):
-    # Xpos2, Yneg1
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([1,0,-5/2,-3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int15(a,b,c,d,x,y,start,end):
-    # Xpos2, Ypos1
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([1,0,-5/2,-3/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
-
-def int16(a,b,c,d,x,y,start,end):
-    # Xpos2, Ypos2
-    ak = torch.tensor([1,0,-5/2,3/2])
-    bk = torch.tensor([2,-4,5/2,-1/2])
-    M = 4
-    alpha, beta = compute_alpha_beta(a,b,c,d,x,y)
-    result = 0
-    for k in range(M):
-        for i in range(k + 1):
-            for kp in range(M):
-                for ip in range(kp + 1):
-                    result = result + ak[k] * alpha[i,k] * bk[kp] * beta[ip,kp] * (end**(i+ip+1) - start**(i+ip+1)) / (i+ip+1)
-
-    return result
+ak,bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
+print(ak)
+print(bk)
