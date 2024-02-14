@@ -26,9 +26,9 @@ def get_coefficients(x_sign, x_dist, y_sign, y_dist):
 
 
     if y_dist == 1:
-        bk = torch.tensor([1.0, -5 / 2, 0.0, 3 / 2])
+        bk = torch.tensor([1.0, 0.0, -5/2, 3/2])
     else:
-        bk = torch.tensor([2.0, -4.0, 5 / 2, -1 / 2])
+        bk = torch.tensor([2.0, -4.0, 5/2, -1/2])
 
     if x_sign == "neg":
         ak = ak * torch.tensor([1.0, -1.0, 1.0, -1.0])

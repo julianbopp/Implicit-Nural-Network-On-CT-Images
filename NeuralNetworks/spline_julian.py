@@ -158,63 +158,81 @@ class SplineNetwork(nn.Module):
         # Calculate the normal to the line (same direction as projection plane)
         # case z = 0
         normal = torch.tensor([[0.0], [1.0]], dtype=torch.float32, device=device)
-        normal_orth = torch.tensor([[1.0], [0.0]], dtype=torch.float32, device=device)
-
+        normal = torch.matmul(rot, normal)
 
         control_points = self.control_points.to(device)
-        control_points[:,1] = - self.control_points[:,1]
+        #control_points[:,1] = - self.control_points[:,1]
 
-        control_points_rot = torch.matmul(rot, control_points.T).T
 
-        projections_orth = torch.matmul(control_points_rot, normal_orth)
+        line_bias = torch.tensor([[0.0], [-z]], dtype=torch.float32, device=device)
+        line_bias = torch.matmul(rot, line_bias)
 
-        distances = torch.abs(projections_orth - z)
-        indices = (distances.squeeze(1) < threshold_x).nonzero()
+        projections = (
+            torch.matmul(control_points, normal)
+            / (torch.linalg.norm(normal).unsqueeze(-1) ** 2)
+        ) * normal.T
 
-        line_slope = torch.matmul(rot, normal_orth).squeeze()
-        line_bias = torch.tensor([[0.0], [-z]], device=device)
-        line_bias = torch.matmul(rot, line_bias).squeeze()
+        distances = torch.abs(projections - line_bias.T)
+        indices = torch.all(
+            distances < torch.tensor([threshold_x, threshold_y], device=device), dim=1
+        ).nonzero()
 
-        t_x_pos = (1 - line_bias[0]) / line_slope[0]
-        t_x_neg = (-1 - line_bias[0]) / line_slope[0]
-        t_y_pos = (1 - line_bias[1]) / line_slope[1]
-        t_y_neg = (-1 - line_bias[1]) / line_slope[1]
+        # 2. Find extrema of line, x- x+ s.t line is x- + t(x+ - x-) for t in [0,1]
+        line_slope = torch.tensor([normal[1], -normal[0]], device=device)
 
-        line_value_x_pos = (line_slope * t_x_pos + line_bias)
-        line_value_x_neg = (line_slope * t_x_neg + line_bias)
-        line_value_y_pos = (line_slope * t_y_pos + line_bias)
-        line_value_y_neg = (line_slope * t_y_neg + line_bias)
+        line_bias = line_bias.squeeze()
 
-        line_value_x_pos = (line_slope * t_x_pos + line_bias)
-        line_value_x_neg = (line_slope * t_x_neg + line_bias)
-        line_value_y_pos = (line_slope * t_y_pos + line_bias)
-        line_value_y_neg = (line_slope * t_y_neg + line_bias)
+        if theta == 0 or theta == 90 or theta == 180:
+            t_min = torch.tensor([-1, z], device=device)
+            t_max = torch.tensor([1, z], device=device)
+        else:
+            t_x_pos = (1 - line_bias[0]) / line_slope[0]
+            t_x_neg = (-1 - line_bias[0]) / line_slope[0]
+            t_y_pos = (1 - line_bias[1]) / line_slope[1]
+            t_y_neg = (-1 - line_bias[1]) / line_slope[1]
 
-        t_min_max = []
-        # maybe 1 plus h_x
-        if abs(line_value_x_pos[1]) <= 1:
-            t_min_max.append(line_value_x_pos)
-        if abs(line_value_x_neg[1]) <= 1:
-            t_min_max.append(line_value_x_neg)
-        if abs(line_value_y_pos[0]) <= 1:
-            t_min_max.append(line_value_y_pos)
-        if abs(line_value_y_neg[0]) <= 1:
-            t_min_max.append(line_value_y_neg)
+            line_value_x_pos = (line_slope * t_x_pos + line_bias)
+            line_value_x_neg = (line_slope * t_x_neg + line_bias)
+            line_value_y_pos = (line_slope * t_y_pos + line_bias)
+            line_value_y_neg = (line_slope * t_y_neg + line_bias)
 
+            t_min_max = []
+            # maybe 1 plus h_x
+            if abs(line_value_x_pos[1]) <= 1:
+                t_min_max.append(line_value_x_pos)
+            if abs(line_value_x_neg[1]) <= 1:
+                t_min_max.append(line_value_x_neg)
+            if abs(line_value_y_pos[0]) <= 1:
+                t_min_max.append(line_value_y_pos)
+            if abs(line_value_y_neg[0]) <= 1:
+                t_min_max.append(line_value_y_neg)
+
+            # Normalize line slope and bias
+        if len(t_min_max) < 2:
+            return 0
         t_min = t_min_max[0]
         t_max = t_min_max[1]
 
+        if (t_max - t_min)[0] < 0:
+            t_min, t_max = t_max, t_min
         line_slope = t_max - t_min
         line_bias = t_min
+
+        # 3. Integrate all control points close to the line
+        weights = self.weights.to(device)
         integral = 0
-        for k in indices:
-            if self.weights[k] != 0:
-                control_point = control_points[k]
-                integral = integral + self.integrate_control_point(line_slope, line_bias, control_point) * torch.abs(line_slope)
-
+        for ind in indices:
+            if weights[ind] == 0:
+                integral = integral + 0
+            else:
+                integral = integral + (
+                    self.integrate_control_point(
+                        line_slope, line_bias, control_points[ind]
+                    )
+                    * weights[ind]
+                    * torch.norm(line_slope/h_x)
+                )
         return integral
-
-
 
     def integrate_control_point(self, slope, bias, control_point):
         h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
@@ -441,18 +459,62 @@ class SplineNetwork(nn.Module):
 
         h = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
         #h=1
-        a = slope[0]
-        b = bias[0]
-        x = control_point[0]
-        c = slope[1]
-        d = bias[1]
-        y = control_point[1]
+        a = slope[0]/math.sqrt(h)
+        b = bias[0]/h
+        x = control_point[0]/h
+        c = slope[1]/math.sqrt(h)
+        d = bias[1]/h
+        y = control_point[1]/h
 
-        start = interval.start
-        end = interval.end
+        start = interval.start/math.sqrt(h)
+        end = interval.end/math.sqrt(h)
 
-        result = integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end)
-        return result
+        if x_sign == "neg":
+            if x_dist == 2:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int01(a, b, c, d, x, y, start, end)
+                    else:
+                        return int02(a, b, c, d, x, y, start, end)
+                else:
+                    if y_dist == 1:
+                        return int03(a, b, c, d, x, y, start, end)
+                    else:
+                        return int04(a, b, c, d, x, y, start, end)
+            else:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int05(a, b, c, d, x, y, start, end)
+                    else:
+                        return int06(a, b, c, d, x, y, start, end)
+                else:
+                    if y_dist == 1:
+                        return int07(a, b, c, d, x, y, start, end)
+                    else:
+                        return int08(a, b, c, d, x, y, start, end)
+        else:
+            if x_dist == 1:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int09(a, b, c, d, x, y, start, end)
+                    else:
+                        return int10(a, b, c, d, x, y, start, end)
+                else:
+                    if y_dist == 1:
+                        return int11(a, b, c, d, x, y, start, end)
+                    else:
+                        return int12(a, b, c, d, x, y, start, end)
+            else:
+                if y_sign == "neg":
+                    if y_dist == 2:
+                        return int13(a, b, c, d, x, y, start, end)
+                    else:
+                        return int14(a, b, c, d, x, y, start, end)
+                else:
+                    if y_dist == 1:
+                        return int15(a, b, c, d, x, y, start, end)
+                    else:
+                        return int16(a, b, c, d, x, y, start, end)
 
 
 device = (
