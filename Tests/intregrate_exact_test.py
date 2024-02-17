@@ -8,9 +8,10 @@ from matplotlib import pyplot as plt
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 
-N = 21
+N = 11
+
 c = 1
-d = 0
+d = 2
 square_image = torch.zeros([N, N])
 square_image[N//2+d,N//2+d] = 1
 #square_image[N//2+1,N//2] = 1
@@ -34,13 +35,16 @@ plt.show()
 
 device = "cpu"
 t = torch.linspace(
-    -math.sqrt(1), math.sqrt(1), steps=math.ceil(N), device=device
+    -math.sqrt(1), math.sqrt(1), steps=30, device=device
 )
-theta = torch.linspace(0.01, 179.9, steps=N, device=device)
+theta = torch.linspace(0.01, 179.9, steps=180, device=device)
 #theta = torch.tensor([45,90+45, 90+45*3,-45])
 #theta = torch.tensor([39])
 #theta = torch.tensor([0])
-#t = torch.tensor([0])
+#t = torch.tensor([0.0])
+#theta = torch.tensor([45,46,47,48])
+#theta = torch.tensor([45])
+print(theta)
 
 sinogram = torch.zeros((len(t), len(theta)))
 for i, x in enumerate(t):

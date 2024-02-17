@@ -47,6 +47,12 @@ class SplineNetwork(nn.Module):
             self.control_points = self.control_points / math.sqrt(2)
         self.control_points.requires_grad = False
 
+
+        self.h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
+        self.h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        print("h_x:")
+        print(self.h_x)
+
     def forward(self, x):
         """
         :param x: input with shape (batch, 2)
@@ -78,8 +84,8 @@ class SplineNetwork(nn.Module):
         neighbors = self.control_points[indices]  # Shape: (batch, K, 2)
 
         # Prepare input for convolutional kernel function
-        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
-        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        h_x = self.h_x
+        h_y = self.h_y
         pairwise_norm = x.unsqueeze(2) - neighbors.permute(0, 2, 1)
 
         input_x = pairwise_norm[:, 0, :] / h_x  # Shape: (batch, K)
@@ -140,11 +146,12 @@ class SplineNetwork(nn.Module):
         # 0. Find line slope and normal of slope
         # 1. Find all control points that are close to the line
         #   - project all control points to normal of slope to find distance
-        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
-        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        #print(f"h_x={h_x}, h_y={h_y}")
+        h_x = self.h_x
+        h_y = self.h_y
 
-        threshold_x = 2* h_x
-        threshold_y = 2* h_y
+        threshold_x = 2 * h_x
+        threshold_y = 2 * h_y
 
         # Transform degree into radians and compute rotation matrix
         phi = torch.tensor(theta * math.pi / 180, device=device)
@@ -162,7 +169,7 @@ class SplineNetwork(nn.Module):
 
 
         control_points = self.control_points.to(device)
-        control_points[:,1] = - self.control_points[:,1]
+        #control_points[:,1] = - self.control_points[:,1]
 
         control_points_rot = torch.matmul(rot, control_points.T).T
 
@@ -171,8 +178,8 @@ class SplineNetwork(nn.Module):
         distances = torch.abs(projections_orth - z)
         indices = (distances.squeeze(1) < threshold_x).nonzero()
 
-        line_slope = torch.matmul(rot, normal_orth).squeeze()
-        line_bias = torch.tensor([[0.0], [-z]], device=device)
+        line_slope = torch.matmul(rot, normal).squeeze()
+        line_bias = torch.tensor([[z], [0]], device=device)
         line_bias = torch.matmul(rot, line_bias).squeeze()
 
         t_x_pos = (1 - line_bias[0]) / line_slope[0]
@@ -204,21 +211,23 @@ class SplineNetwork(nn.Module):
         t_min = t_min_max[0]
         t_max = t_min_max[1]
 
-        line_slope = t_max - t_min
-        line_bias = t_min
+        #line_slope = t_max - t_min
+        #line_bias = t_min
         integral = 0
         for k in indices:
             if self.weights[k] != 0:
                 control_point = control_points[k]
-                integral = integral + self.integrate_control_point(line_slope, line_bias, control_point) * torch.abs(line_slope)
+                #control_point = torch.tensor([[0.0,0.0]])
+                integral = integral + self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope)
 
         return integral
 
 
 
     def integrate_control_point(self, slope, bias, control_point):
-        h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
-        h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+        h_x = self.h_x
+        h_y = self.h_y
+
 
         a = slope[0]
         b = bias[0]
@@ -236,24 +245,24 @@ class SplineNetwork(nn.Module):
             torch.zeros(2),
         )
 
-        x_bounds_1[0] = torch.nn.functional.relu((-1*h_x + x - bias[0]) / slope[0])
-        x_bounds_1[1] = torch.nn.functional.relu((1*h_x + x - bias[0]) / slope[0])
-        x_bounds_2[0] = torch.nn.functional.relu((-2 * h_x + x - bias[0]) / slope[0])
-        x_bounds_2[1] = torch.nn.functional.relu((2 * h_x + x - bias[0]) / slope[0])
+        x_bounds_1[0] = ((-1*h_x + x - bias[0]) / slope[0])
+        x_bounds_1[1] = ((1*h_x + x - bias[0]) / slope[0])
+        x_bounds_2[0] = ((-2 * h_x + x - bias[0]) / slope[0])
+        x_bounds_2[1] = ((2 * h_x + x - bias[0]) / slope[0])
 
         x_crossing = (x - bias[0]) / slope[0]
 
-        y_bounds_1[0] = torch.nn.functional.relu((-1*h_y + y - bias[1]) / slope[1])
-        y_bounds_1[1] = torch.nn.functional.relu((1*h_y + y - bias[1]) / slope[1])
-        y_bounds_2[0] = torch.nn.functional.relu((-2 * h_y + y - bias[1]) / slope[1])
-        y_bounds_2[1] = torch.nn.functional.relu((2 * h_y + y - bias[1]) / slope[1])
+        y_bounds_1[0] = ((-1*h_y + y - bias[1]) / slope[1])
+        y_bounds_1[1] = ((1*h_y + y - bias[1]) / slope[1])
+        y_bounds_2[0] = ((-2 * h_y + y - bias[1]) / slope[1])
+        y_bounds_2[1] = ((2 * h_y + y - bias[1]) / slope[1])
 
         y_crossing = (y - bias[1]) / slope[1]
 
-        x_bounds_1[x_bounds_1 > 1] = 1
-        x_bounds_2[x_bounds_2 > 1] = 1
-        y_bounds_1[y_bounds_1 > 1] = 1
-        y_bounds_2[y_bounds_2 > 1] = 1
+        #x_bounds_1[x_bounds_1 > 1] = 1
+        #x_bounds_2[x_bounds_2 > 1] = 1
+        #y_bounds_1[y_bounds_1 > 1] = 1
+        #y_bounds_2[y_bounds_2 > 1] = 1
 
         # It can happen that the bounds are not in start, end order, therefore sort
         x_bounds_1, _ = torch.sort(x_bounds_1)
@@ -275,7 +284,6 @@ class SplineNetwork(nn.Module):
         # self, interval: FuncInterval, slope, bias, control_point
         integral = 0
         for interval in combined_list:
-
             integral = integral + (self.apply_function_for_interval(
                 interval, slope, bias, [x, y]
             ))
@@ -439,8 +447,7 @@ class SplineNetwork(nn.Module):
         x_dist = interval.x_dist
         y_dist = interval.y_dist
 
-        h = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
-        #h=1
+        h = self.h_y
         a = slope[0]
         b = bias[0]
         x = control_point[0]

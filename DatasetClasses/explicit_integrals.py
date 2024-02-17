@@ -11,10 +11,10 @@ def compute_alpha_beta(a,b,c,d,x,y):
     alpha = torch.zeros([4,4],device=device)
     beta = torch.zeros([4,4],device=device)
 
-    for i in range(4):
-        for k in range(4):
-            alpha[i,k] = a**i * (b-x) ** (k-i) * nck(k,i,device)
-            beta[i,k] = c**i * (d-y) ** (k-i) * nck(k,i,device)
+    for k in range(4):
+        for i in range(k+1):
+            alpha[i,k] = (a**i) * ((b-x) ** (k-i)) * nck(k,i,device)
+            beta[i,k] = (c**i) * ((d-y) ** (k-i)) * nck(k,i,device)
 
     return alpha, beta
 
@@ -38,36 +38,55 @@ def get_coefficients(x_sign, x_dist, y_sign, y_dist):
     return ak, bk
 
 def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end):
-    alpha, beta = compute_alpha_beta(a, b, c, d, x, y)
     ak, bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
 
-    result = 0
-    for k in range(4):
+    Ax, Bx, Cx, Dx = get_t_coeff(ak, a, b, x, h)
+    Ay, By, Cy, Dy = get_t_coeff(bk, c, d, y, h)
 
-        tmp1 = 0
-        for kp in range(4):
-
-            tmp2 = 0
-            for i in range(k+1):
-
-                tmp3 = 0
-                for ip in range(kp+1):
-                    tmp3 = tmp3 + beta[ip,kp] * (end ** (ip+i+1) - start ** (ip+i+1)) / (ip+i+1)
-
-                tmp2 = tmp2 + alpha[i,k] * tmp3
-            tmp1 = tmp1 + bk[kp] * 1/h**kp * tmp2
-        result = result + ak[k] * 1/h**k * tmp1
-
+    result = integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,start,end)
     return result
+
+def get_t_coeff(spline_coeff, n, bias, cp, h):
+    alpha = bias-cp
+    a,b,c,d = spline_coeff[3],spline_coeff[2],spline_coeff[1],spline_coeff[0]
+
+    A = a * n ** 3 / (h ** 3)
+    B = b * n ** 2 / (h ** 2) + 3 * a * n ** 2 * alpha / (h ** 3)
+    C = c * n / h + b * 2 * n * (alpha) / (h ** 2) + a * 3 * n * alpha ** 2 / (h ** 3)
+    D = d + c * (alpha) / h + b * alpha ** 2 / (h**2) + a * alpha**3 / (h**3)
+
+    return A, B, C, D
+
+def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
+    int_value =  (t1**7-t0**7)*Ax*Ay/7
+    int_value = int_value + (t1**6-t0**6)*(Ax*By + Bx*Ay)/6
+    int_value += (t1**5-t0**5)*(Ax*Cy + Bx*By + Cx*Ay)/5
+    int_value += (t1**4-t0**4)*(Ax*Dy + Bx*Cy + Cx*By + Dx*Ay)/4
+
+    int_value += (t1**3-t0**3)*(Bx*Dy +Cx*Cy + Dx*By)/3
+    int_value += (t1**2-t0**2)*(Cx*Dy + Dx*Cy)/2
+    int_value += (t1-t0)*(Dx*Dy)
+    return int_value
+
+
 
 
 
 
 x_sign = "neg"
-y_sign = "neg"
+y_sign = "pos"
 x_dist = 1
 y_dist = 1
+h = 1
+a = -1
+b = 1
+c = 1
+d = -1
+x = torch.tensor([0.0])
+y = torch.tensor([0.0])
 
-ak,bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
-print(ak)
-print(bk)
+start = 0
+end = 0.5
+
+result = integrate_exact(x_sign, x_dist, y_sign,y_dist,a,b,c,d,x,y,h,start,end)
+print(result.item())
