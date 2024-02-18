@@ -37,6 +37,20 @@ def get_coefficients(x_sign, x_dist, y_sign, y_dist):
 
     return ak, bk
 
+def get_spline_coefficients(sign, dist):
+    if dist == 1:
+        coefficients = torch.tensor([1.0, 0.0, -5 / 2, 3 / 2])
+    elif dist == 2:
+        coefficients = torch.tensor([2.0, -4.0, 5 / 2, -1 / 2])
+    else:
+        coefficients = torch.tensor([0.0, 0.0, 0.0, 0.0])
+
+    if sign == "neg":
+        coefficients = coefficients * torch.tensor([1.0, -1.0, 1.0, -1.0])
+
+    return coefficients
+
+
 def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end):
     ak, bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
 
@@ -45,6 +59,15 @@ def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, 
 
     result = integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,start,end)
     return result
+
+def integrate_1d(sign, dist, slope, bias, cp, h, start, end):
+    spline_coefficients = get_spline_coefficients(sign, dist)
+    A, B, C, D = get_t_coeff(spline_coefficients, slope, bias, cp, h)
+
+    result = A*(end**4-start**4)/4 + B*(end**3-start**3)/3 + C*(end**2-start**2)/2 + D*(end-start)
+
+    return result
+
 
 def get_t_coeff(spline_coeff, n, bias, cp, h):
     alpha = bias-cp
