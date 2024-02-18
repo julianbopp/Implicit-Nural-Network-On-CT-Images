@@ -140,8 +140,6 @@ class SplineNetwork(nn.Module):
         :return: Integral along line specified by z and theta
         """
         device = z.device
-        if theta == 0 or theta == 90 or theta == 180:
-            return 0
 
         # 0. Find line slope and normal of slope
         # 1. Find all control points that are close to the line
@@ -168,10 +166,10 @@ class SplineNetwork(nn.Module):
         normal_orth = torch.tensor([[1.0], [0.0]], dtype=torch.float32, device=device)
 
 
-        control_points = self.control_points.to(device)
-        #control_points[:,1] = - self.control_points[:,1]
+        control_points = self.control_points.clone().detach()
+        control_points[:,1] = - self.control_points[:,1]
 
-        control_points_rot = torch.matmul(rot, control_points.T).T
+        control_points_rot = torch.matmul(control_points, rot)
 
         projections_orth = torch.matmul(control_points_rot, normal_orth)
 
@@ -270,16 +268,20 @@ class SplineNetwork(nn.Module):
         y_bounds_1, _ = torch.sort(y_bounds_1)
         y_bounds_2, _ = torch.sort(y_bounds_2)
 
-        x_list = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
-        y_list = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
+        if slope[0] != 0:
+            x_list = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
+            x_list = self.split_intervals_at_crossing(x_crossing, x_list)
+            x_list = self.assign_interval_signs(slope[0], x_crossing, x_list)
+            combined_list = x_list
 
-        x_list = self.split_intervals_at_crossing(x_crossing, x_list)
-        y_list = self.split_intervals_at_crossing(y_crossing, y_list)
+        if slope[1] != 0:
+            y_list = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
+            y_list = self.split_intervals_at_crossing(y_crossing, y_list)
+            y_list = self.assign_interval_signs(slope[1], y_crossing, y_list)
+            combined_list = y_list
 
-        x_list = self.assign_interval_signs(slope[0], x_crossing, x_list)
-        y_list = self.assign_interval_signs(slope[1], y_crossing, y_list)
-
-        combined_list = self.combine_x_y_intervals(x_list, y_list)
+        if slope[0] != 0 and slope[1] != 0:
+            combined_list = self.combine_x_y_intervals(x_list, y_list)
 
         # self, interval: FuncInterval, slope, bias, control_point
         integral = 0
@@ -458,7 +460,13 @@ class SplineNetwork(nn.Module):
         start = interval.start
         end = interval.end
 
-        result = integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end)
+        if interval.dim == "x":
+            result = integrate_1d(x_sign, x_dist, a, b, x, h, start, end) * self.cubic_conv(d-y)
+        elif interval.dim == "y":
+            result = integrate_1d(y_sign, y_dist, c, d, y, h, start, end) * self.cubic_conv(b-x)
+        else:
+            # dim == "xy"
+            result = integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end)
         return result
 
 
