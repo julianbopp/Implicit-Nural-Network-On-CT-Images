@@ -50,6 +50,11 @@ class SplineNetwork(nn.Module):
 
         self.h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
         self.h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
+
+        #self.h_x = 2/N
+        #self.h_y = 2/N
+        #self.h_x = 0.5
+        #self.h_y = 0.5
         print("h_x:")
         print(self.h_x)
 
@@ -167,7 +172,7 @@ class SplineNetwork(nn.Module):
 
 
         control_points = self.control_points.clone().detach()
-        control_points[:,1] = - self.control_points[:,1]
+        control_points[:,1] = - self.control_points.clone().detach()[:,1]
 
         control_points_rot = torch.matmul(control_points, rot)
 
@@ -180,51 +185,32 @@ class SplineNetwork(nn.Module):
         line_bias = torch.tensor([[z], [0]], device=device)
         line_bias = torch.matmul(rot, line_bias).squeeze()
 
-        t_x_pos = (1 - line_bias[0]) / line_slope[0]
-        t_x_neg = (-1 - line_bias[0]) / line_slope[0]
-        t_y_pos = (1 - line_bias[1]) / line_slope[1]
-        t_y_neg = (-1 - line_bias[1]) / line_slope[1]
-
-        line_value_x_pos = (line_slope * t_x_pos + line_bias)
-        line_value_x_neg = (line_slope * t_x_neg + line_bias)
-        line_value_y_pos = (line_slope * t_y_pos + line_bias)
-        line_value_y_neg = (line_slope * t_y_neg + line_bias)
-
-        line_value_x_pos = (line_slope * t_x_pos + line_bias)
-        line_value_x_neg = (line_slope * t_x_neg + line_bias)
-        line_value_y_pos = (line_slope * t_y_pos + line_bias)
-        line_value_y_neg = (line_slope * t_y_neg + line_bias)
-
-        t_min_max = []
-        # maybe 1 plus h_x
-        if abs(line_value_x_pos[1]) <= 1:
-            t_min_max.append(line_value_x_pos)
-        if abs(line_value_x_neg[1]) <= 1:
-            t_min_max.append(line_value_x_neg)
-        if abs(line_value_y_pos[0]) <= 1:
-            t_min_max.append(line_value_y_pos)
-        if abs(line_value_y_neg[0]) <= 1:
-            t_min_max.append(line_value_y_neg)
-
-        t_min = t_min_max[0]
-        t_max = t_min_max[1]
-
-        #line_slope = t_max - t_min
-        #line_bias = t_min
+        #line_slope = line_slope
         integral = 0
         for k in indices:
             if self.weights[k] != 0:
                 control_point = control_points[k]
                 #control_point = torch.tensor([[0.0,0.0]])
-                integral = integral + self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope)
+                tmp = self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope)
+                integral = integral + tmp
 
         return integral
 
-
+    def find_interval(self,alpha, n, h):
+        A_tilde = n ** 2
+        B_tilde = 2 * n * alpha
+        C_tilde1 = alpha ** 2 - h ** 2
+        delta = B_tilde ** 2 - 4 * A_tilde * C_tilde1
+        if torch.abs(delta) < 1e-4:
+            delta = delta * 0.
+        t_p = (-B_tilde + torch.sqrt(delta)) / (2 * A_tilde)
+        t_m = (-B_tilde - torch.sqrt(delta)) / (2 * A_tilde)
+        return t_m, t_p
 
     def integrate_control_point(self, slope, bias, control_point):
         h_x = self.h_x
         h_y = self.h_y
+
 
 
         a = slope[0]
@@ -234,6 +220,30 @@ class SplineNetwork(nn.Module):
 
         x = control_point[0][0]
         y = control_point[0][1]
+
+
+        x0 = b
+        alphax = (x0 - x)
+        tx1_m, tx1_p = self.find_interval(alphax, a, h_x)
+        tx2_m, tx2_p = self.find_interval(alphax, a, 2 * h_x)
+        txz_m, txz_p = self.find_interval(alphax, a, 0)
+        # In the y direction
+        y0 = d
+        alphay = (y0 - y)
+        ty1_m, ty1_p = self.find_interval(alphay, c, h_y)
+        ty2_m, ty2_p = self.find_interval(alphay, c, 2 * h_y)
+        tyz_m, tyz_p = self.find_interval(alphay, c, 0)
+
+        # Order all the t values
+        if a.item() == 0:
+            #t_list = torch.sort(torch.concat([ty1_m, ty1_p, ty2_m, ty2_p, tyz_m]))[0]
+            pass
+        elif c.item() == 0:
+            #t_list = torch.sort(torch.concat([tx1_m, tx1_p, tx2_m, tx2_p, txz_m]))[0]
+            pass
+        else:
+            #t_list = torch.sort(torch.tensor([tx1_m, tx1_p, tx2_m, tx2_p, txz_m, ty1_m, ty1_p, ty2_m, ty2_p, tyz_m]))[0]
+            pass
 
         # Create and find the intervals for t in which the distance is 1 or 2
         x_bounds_1, y_bounds_1, x_bounds_2, y_bounds_2 = (
@@ -461,9 +471,9 @@ class SplineNetwork(nn.Module):
         end = interval.end
 
         if interval.dim == "x":
-            result = integrate_1d(x_sign, x_dist, a, b, x, h, start, end) * self.cubic_conv(d-y)
+            result = integrate_1d(x_sign, x_dist, a, b, x, h, start, end) * self.cubic_conv((d-y)/self.h_y)
         elif interval.dim == "y":
-            result = integrate_1d(y_sign, y_dist, c, d, y, h, start, end) * self.cubic_conv(b-x)
+            result = integrate_1d(y_sign, y_dist, c, d, y, h, start, end) * self.cubic_conv((b-x)/self.h_x)
         else:
             # dim == "xy"
             result = integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end)

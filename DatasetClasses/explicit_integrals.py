@@ -53,7 +53,6 @@ def get_spline_coefficients(sign, dist):
 
 def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end):
     ak, bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
-
     Ax, Bx, Cx, Dx = get_t_coeff(ak, a, b, x, h)
     Ay, By, Cy, Dy = get_t_coeff(bk, c, d, y, h)
 
@@ -70,25 +69,30 @@ def integrate_1d(sign, dist, slope, bias, cp, h, start, end):
 
 
 def get_t_coeff(spline_coeff, n, bias, cp, h):
-    alpha = bias-cp
+    alpha = (bias-cp)
     a,b,c,d = spline_coeff[3],spline_coeff[2],spline_coeff[1],spline_coeff[0]
 
     A = a * n ** 3 / (h ** 3)
-    B = b * n ** 2 / (h ** 2) + 3 * a * n ** 2 * alpha / (h ** 3)
-    C = c * n / h + b * 2 * n * (alpha) / (h ** 2) + a * 3 * n * alpha ** 2 / (h ** 3)
-    D = d + c * (alpha) / h + b * alpha ** 2 / (h**2) + a * alpha**3 / (h**3)
-
+    B = (3 * a * n ** 2 * alpha + h* b * n ** 2)/(h**3)
+    C = (a * 3 * n * alpha ** 2 + h * b * 2 * n * alpha + h**2*c * n)/(h**3)
+    D = (a * alpha ** 3 + b * alpha ** 2 *h + c * alpha *h**2 + d*h**3)/(h**3)
     return A, B, C, D
 
 def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
-    int_value =  (t1**7-t0**7)*Ax*Ay/7
-    int_value = int_value + (t1**6-t0**6)*(Ax*By + Bx*Ay)/6
+    int_value = ((t1**7-t0**7)*Ax*Ay/7).view(1)
+    int_value += (t1**6-t0**6)*(Ax*By + Bx*Ay)/6
     int_value += (t1**5-t0**5)*(Ax*Cy + Bx*By + Cx*Ay)/5
     int_value += (t1**4-t0**4)*(Ax*Dy + Bx*Cy + Cx*By + Dx*Ay)/4
 
     int_value += (t1**3-t0**3)*(Bx*Dy +Cx*Cy + Dx*By)/3
     int_value += (t1**2-t0**2)*(Cx*Dy + Dx*Cy)/2
     int_value += (t1-t0)*(Dx*Dy)
+
+
+    int_value = t0*(-Dx*Dy + t0*(-Cx*Dy/2 - Cy*Dx/2 + t0*(-Bx*Dy/3 - By*Dx/3 - Cx*Cy/3 + t0*(-Ax*Dy/4 - Ay*Dx/4 - Bx*Cy/4 - By*Cx/4 + t0*(-Ax*Cy/5 - Ay*Cx/5 - Bx*By/5 + t0*(-Ax*Ay*t0/7 - Ax*By/6 - Ay*Bx/6)))))) + t1*(Dx*Dy + t1*(Cx*Dy/2 + Cy*Dx/2 + t1*(Bx*Dy/3 + By*Dx/3 + Cx*Cy/3 + t1*(Ax*Dy/4 + Ay*Dx/4 + Bx*Cy/4 + By*Cx/4 + t1*(Ax*Cy/5 + Ay*Cx/5 + Bx*By/5 + t1*(Ax*Ay*t1/7 + Ax*By/6 + Ay*Bx/6))))))
+
+
+
     return int_value
 
 
@@ -96,20 +100,3 @@ def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
 
 
 
-x_sign = "neg"
-y_sign = "pos"
-x_dist = 1
-y_dist = 1
-h = 1
-a = -1
-b = 1
-c = 1
-d = -1
-x = torch.tensor([0.0])
-y = torch.tensor([0.0])
-
-start = 0
-end = 0.5
-
-result = integrate_exact(x_sign, x_dist, y_sign,y_dist,a,b,c,d,x,y,h,start,end)
-print(result.item())
