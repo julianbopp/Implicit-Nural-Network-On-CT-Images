@@ -185,13 +185,23 @@ class SplineNetwork(nn.Module):
         line_bias = torch.tensor([[z], [0]], device=device)
         line_bias = torch.matmul(rot, line_bias).squeeze()
 
+
         #line_slope = line_slope
         integral = 0
         for k in indices:
             if self.weights[k] != 0:
                 control_point = control_points[k]
+                x = control_point[0][0]
+                y = control_point[0][1]
+                m1 = line_slope[0]
+                m2 = line_slope[1]
+                b1 = line_bias[0]
+                b2 = line_bias[1]
+
+                t = ((y-b2)*m2 + (x-b1)*m1)/(m1**2 + m2**2)
+                line_bias = line_slope*t + line_bias
                 #control_point = torch.tensor([[0.0,0.0]])
-                tmp = self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope)
+                tmp = self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope) * self.weights[k]
                 integral = integral + tmp
 
         return integral
