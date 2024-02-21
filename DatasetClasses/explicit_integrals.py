@@ -1,10 +1,11 @@
 import torch
-from torch import lgamma
+
 
 def nck(n,k,device):
     n = torch.tensor([n],device=device)
     k = torch.tensor([k],device=device)
     return ((n + 1).lgamma() - (k + 1).lgamma() - ((n - k) + 1).lgamma()).exp()
+
 
 def compute_alpha_beta(a,b,c,d,x,y):
     device = x.device
@@ -18,24 +19,6 @@ def compute_alpha_beta(a,b,c,d,x,y):
 
     return alpha, beta
 
-def get_coefficients(x_sign, x_dist, y_sign, y_dist):
-    if x_dist == 1:
-        ak = torch.tensor([1.0, 0.0, -5/2, 3/2])
-    else:
-        ak = torch.tensor([2.0, -4.0, 5/2, -1/2])
-
-
-    if y_dist == 1:
-        bk = torch.tensor([1.0, 0.0, -5/2, 3/2])
-    else:
-        bk = torch.tensor([2.0, -4.0, 5/2, -1/2])
-
-    if x_sign == "neg":
-        ak = ak * torch.tensor([1.0, -1.0, 1.0, -1.0])
-    if y_sign == "neg":
-        bk = bk * torch.tensor([1.0, -1.0, 1.0, -1.0])
-
-    return ak, bk
 
 def get_spline_coefficients(sign, dist):
     if dist == 1:
@@ -52,20 +35,15 @@ def get_spline_coefficients(sign, dist):
 
 
 def integrate_exact(x_sign, x_dist, y_sign, y_dist, a, b, c, d, x, y, h, start, end):
-    ak, bk = get_coefficients(x_sign, x_dist, y_sign, y_dist)
+    ak = get_spline_coefficients(x_sign, x_dist)
+    bk = get_spline_coefficients(y_sign, y_dist)
+
     Ax, Bx, Cx, Dx = get_t_coeff(ak, a, b, x, h)
     Ay, By, Cy, Dy = get_t_coeff(bk, c, d, y, h)
 
     result = integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,start,end)
     return result
 
-def integrate_1d(sign, dist, slope, bias, cp, h, start, end):
-    spline_coefficients = get_spline_coefficients(sign, dist)
-    A, B, C, D = get_t_coeff(spline_coefficients, slope, bias, cp, h)
-
-    result = A*(end**4-start**4)/4 + B*(end**3-start**3)/3 + C*(end**2-start**2)/2 + D*(end-start)
-
-    return result
 
 
 def get_t_coeff(spline_coeff, n, bias, cp, h):
@@ -78,6 +56,7 @@ def get_t_coeff(spline_coeff, n, bias, cp, h):
     D = (a * alpha ** 3 + b * alpha ** 2 *h + c * alpha *h**2 + d*h**3)/(h**3)
     return A, B, C, D
 
+
 def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
     int_value = ((t1**7-t0**7)*Ax*Ay/7).view(1)
     int_value += (t1**6-t0**6)*(Ax*By + Bx*Ay)/6
@@ -88,13 +67,16 @@ def integrate(Ax,Bx,Cx,Dx,Ay,By,Cy,Dy,t0,t1):
     int_value += (t1**2-t0**2)*(Cx*Dy + Dx*Cy)/2
     int_value += (t1-t0)*(Dx*Dy)
 
-
-    int_value = t0*(-Dx*Dy + t0*(-Cx*Dy/2 - Cy*Dx/2 + t0*(-Bx*Dy/3 - By*Dx/3 - Cx*Cy/3 + t0*(-Ax*Dy/4 - Ay*Dx/4 - Bx*Cy/4 - By*Cx/4 + t0*(-Ax*Cy/5 - Ay*Cx/5 - Bx*By/5 + t0*(-Ax*Ay*t0/7 - Ax*By/6 - Ay*Bx/6)))))) + t1*(Dx*Dy + t1*(Cx*Dy/2 + Cy*Dx/2 + t1*(Bx*Dy/3 + By*Dx/3 + Cx*Cy/3 + t1*(Ax*Dy/4 + Ay*Dx/4 + Bx*Cy/4 + By*Cx/4 + t1*(Ax*Cy/5 + Ay*Cx/5 + Bx*By/5 + t1*(Ax*Ay*t1/7 + Ax*By/6 + Ay*Bx/6))))))
-
-
-
     return int_value
 
+
+def integrate_1d(sign, dist, slope, bias, cp, h, start, end):
+    spline_coefficients = get_spline_coefficients(sign, dist)
+    A, B, C, D = get_t_coeff(spline_coefficients, slope, bias, cp, h)
+
+    result = A*(end**4-start**4)/4 + B*(end**3-start**3)/3 + C*(end**2-start**2)/2 + D*(end-start)
+
+    return result
 
 
 
