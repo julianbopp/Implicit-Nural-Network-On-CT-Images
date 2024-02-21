@@ -34,14 +34,10 @@ class SplineNetwork(nn.Module):
 
         self.N = N
         self.weights = torch.zeros(N, N, requires_grad=True)
-        # self.weights = LodopabImage(N, pad=False).image
-        # self.weights = self.weights.cpu()
         self.weights = self.weights.reshape(-1, 1)
         self.weights = nn.Parameter(self.weights)
-        # self.weights.data.uniform_(-1 / N, 1 / N)
 
         self.control_points = get_mgrid(sidelen=N, dim=2).view(-1, 2)
-        #self.control_points[:,1] = - self.control_points[:,1]
 
         if circle:
             self.control_points = self.control_points / math.sqrt(2)
@@ -51,12 +47,6 @@ class SplineNetwork(nn.Module):
         self.h_x = (self.control_points[0][0] - self.control_points[1][0]).norm()
         self.h_y = (self.control_points[0][1] - self.control_points[self.N][1]).norm()
 
-        #self.h_x = 2/N
-        #self.h_y = 2/N
-        #self.h_x = 0.5
-        #self.h_y = 0.5
-        print("h_x:")
-        print(self.h_x)
 
     def forward(self, x):
         """
@@ -146,15 +136,10 @@ class SplineNetwork(nn.Module):
         """
         device = z.device
 
-        # 0. Find line slope and normal of slope
-        # 1. Find all control points that are close to the line
-        #   - project all control points to normal of slope to find distance
-        #print(f"h_x={h_x}, h_y={h_y}")
         h_x = self.h_x
         h_y = self.h_y
 
-        threshold_x = 2 * h_x
-        threshold_y = 2 * h_y
+        threshold = math.sqrt((2*h_x)**2+(2*h_y)**2)
 
         # Transform degree into radians and compute rotation matrix
         phi = torch.tensor(theta * math.pi / 180, device=device)
@@ -176,17 +161,16 @@ class SplineNetwork(nn.Module):
 
         control_points_rot = torch.matmul(control_points, rot)
 
-        projections_orth = torch.matmul(control_points_rot, normal_orth)
+        projections = torch.matmul(control_points_rot, normal_orth)
 
-        distances = torch.abs(projections_orth - z)
-        indices = (distances.squeeze(1) < threshold_x).nonzero()
+        distances = torch.abs(projections - z)
+        indices = (distances.squeeze(1) < threshold).nonzero()
 
         line_slope = torch.matmul(rot, normal).squeeze()
         line_bias = torch.tensor([[z], [0]], device=device)
         line_bias = torch.matmul(rot, line_bias).squeeze()
 
 
-        #line_slope = line_slope
         integral = 0
         for k in indices:
             if self.weights[k] != 0:
@@ -200,7 +184,6 @@ class SplineNetwork(nn.Module):
 
                 t = ((y-b2)*m2 + (x-b1)*m1)/(m1**2 + m2**2)
                 line_bias = line_slope*t + line_bias
-                #control_point = torch.tensor([[0.0,0.0]])
                 tmp = self.integrate_control_point(line_slope, line_bias, control_point) * torch.norm(line_slope) * self.weights[k]
                 integral = integral + tmp
 
@@ -221,39 +204,8 @@ class SplineNetwork(nn.Module):
         h_x = self.h_x
         h_y = self.h_y
 
-
-
-        a = slope[0]
-        b = bias[0]
-        c = slope[1]
-        d = bias[1]
-
         x = control_point[0][0]
         y = control_point[0][1]
-
-
-        x0 = b
-        alphax = (x0 - x)
-        tx1_m, tx1_p = self.find_interval(alphax, a, h_x)
-        tx2_m, tx2_p = self.find_interval(alphax, a, 2 * h_x)
-        txz_m, txz_p = self.find_interval(alphax, a, 0)
-        # In the y direction
-        y0 = d
-        alphay = (y0 - y)
-        ty1_m, ty1_p = self.find_interval(alphay, c, h_y)
-        ty2_m, ty2_p = self.find_interval(alphay, c, 2 * h_y)
-        tyz_m, tyz_p = self.find_interval(alphay, c, 0)
-
-        # Order all the t values
-        if a.item() == 0:
-            #t_list = torch.sort(torch.concat([ty1_m, ty1_p, ty2_m, ty2_p, tyz_m]))[0]
-            pass
-        elif c.item() == 0:
-            #t_list = torch.sort(torch.concat([tx1_m, tx1_p, tx2_m, tx2_p, txz_m]))[0]
-            pass
-        else:
-            #t_list = torch.sort(torch.tensor([tx1_m, tx1_p, tx2_m, tx2_p, txz_m, ty1_m, ty1_p, ty2_m, ty2_p, tyz_m]))[0]
-            pass
 
         # Create and find the intervals for t in which the distance is 1 or 2
         x_bounds_1, y_bounds_1, x_bounds_2, y_bounds_2 = (
@@ -277,39 +229,38 @@ class SplineNetwork(nn.Module):
 
         y_crossing = (y - bias[1]) / slope[1]
 
-        #x_bounds_1[x_bounds_1 > 1] = 1
-        #x_bounds_2[x_bounds_2 > 1] = 1
-        #y_bounds_1[y_bounds_1 > 1] = 1
-        #y_bounds_2[y_bounds_2 > 1] = 1
-
         # It can happen that the bounds are not in start, end order, therefore sort
         x_bounds_1, _ = torch.sort(x_bounds_1)
         x_bounds_2, _ = torch.sort(x_bounds_2)
         y_bounds_1, _ = torch.sort(y_bounds_1)
         y_bounds_2, _ = torch.sort(y_bounds_2)
 
+        # If statements to handle special case where the line is perpendicular to the x- or y-axis.
+        # If the line is perpendicular to the x-axis it will have slope[0] = 0 and therefore no change in x.
         if slope[0] != 0:
             x_list = self.create_intervals_from_bounds("x", x_bounds_1, x_bounds_2)
             x_list = self.split_intervals_at_crossing(x_crossing, x_list)
             x_list = self.assign_interval_signs(slope[0], x_crossing, x_list)
             combined_list = x_list
 
+        # If the line is perpendicular to the y-axis it will have slope[1] = 0 and therefore no change in y.
         if slope[1] != 0:
             y_list = self.create_intervals_from_bounds("y", y_bounds_1, y_bounds_2)
             y_list = self.split_intervals_at_crossing(y_crossing, y_list)
             y_list = self.assign_interval_signs(slope[1], y_crossing, y_list)
             combined_list = y_list
 
+        # If the line is not perpendicular to the x- or y-axis (which will be the case for most lines)
+        # we will have change in both x and y and need to merge the two lists of intervals.
         if slope[0] != 0 and slope[1] != 0:
             combined_list = self.combine_x_y_intervals(x_list, y_list)
 
-        # self, interval: FuncInterval, slope, bias, control_point
+        # Integrate over all the intervals in combined_list separately.
         integral = 0
         for interval in combined_list:
             integral = integral + (self.apply_function_for_interval(
                 interval, slope, bias, [x, y]
             ))
-
 
         return integral
 
@@ -319,7 +270,7 @@ class SplineNetwork(nn.Module):
         Usually creates 3 intervals. 2 in bounds2 1 inside bounds1
         :param bounds1: t bounds for distance < 1
         :param bounds2: t bounds for distance < 2
-        :return: t intvervals for distance 1 and 2
+        :return: t intervals for distance 1 and 2
         """
         if dim == "x":
             interval_a = FuncInterval(
@@ -362,6 +313,13 @@ class SplineNetwork(nn.Module):
         return return_list
 
     def split_intervals_at_crossing(self, crossing, intervals: list[FuncInterval]):
+        """
+        When an interval [a,b] in the given list of intervals contains the value 'crossing', it will be split
+        and two new intervals [a,crossing], [crossing,b] will be created.
+        :param crossing: Value at which intervals will be split
+        :param intervals: List of intervals
+        :return: List of intervals split at crossing
+        """
         new_intervals = []
 
         for interval in intervals:
@@ -376,7 +334,7 @@ class SplineNetwork(nn.Module):
 
     def assign_interval_signs(self, slope, crossing, intervals: list[FuncInterval]):
         """
-        Assigns "neg" or "pos" to interval. Requires intervals to be split at crossing
+        Assigns "neg" or "pos" to interval. Requires intervals to be split at 0 crossing
         :param slope:
         :param crossing:
         :param intervals:
@@ -410,6 +368,16 @@ class SplineNetwork(nn.Module):
     def combine_x_y_intervals(
         self, x_intervals: list[FuncInterval], y_intervals: list[FuncInterval]
     ):
+        """
+        Combine two sets of intervals to one. For example:
+        A = {[0,2],[2,4]}, B = {[1,3]} will become C = {[0,1],[1,2],[2,3],[3,4].
+        The intervals that are used here are intervals of t for which a given line has
+        either distance less than 1 or less than 2 to a given control point in a given coordinate (x or y coordinate).
+        This information will be kept in the combined interval list.
+        :param x_intervals: t intervals for in which certain distances in x are reached
+        :param y_intervals: t intervals for in which certain distances in y are reached
+        :return
+        """
         stack = sorted(x_intervals + y_intervals, reverse=True)
 
         combined_list = []
@@ -464,6 +432,15 @@ class SplineNetwork(nn.Module):
     def apply_function_for_interval(
         self, interval: FuncInterval, slope, bias, control_point
     ):
+        """
+        Given a interval select the correct function to integrate it
+        :param interval: Interval to integrate over
+        :param slope: Slope of the line that is integrated along
+        :param bias: Bias term of the line that is integrated along
+        :param control_point: Spline control_point that is integrated
+        :return: Exact integral value
+        """
+
         x_sign = interval.x_sign
         y_sign = interval.y_sign
         x_dist = interval.x_dist
@@ -490,47 +467,3 @@ class SplineNetwork(nn.Module):
         return result
 
 
-device = (
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
-    else "cpu"
-)
-device = "cpu"
-print(f"Using {device} device")
-if __name__ == "__main__":
-    N = 32
-    model = SplineNetwork(N)
-    model.load_state_dict(torch.load("../spline_image.pt", map_location=device))
-    model.eval()
-
-    interval = torch.linspace(-1, 1, steps=math.ceil(N * 1.0))
-    gridx, gridy = torch.meshgrid(interval, interval, indexing="xy")
-    model_input = torch.stack((gridx, gridy), dim=2)
-    model_output, _ = model(model_input)
-    radon_transform = radon(
-        model_output.view(N, N).cpu().detach().numpy(),
-        theta=np.linspace(0.0, 180.0, N)-90,
-        circle=False,
-    )
-    plt.imshow(model_output.view(N, N).cpu().detach().numpy())
-    plt.show()
-    plt.imshow(radon_transform)
-    plt.show()
-
-    t = torch.linspace(
-        -math.sqrt(2), math.sqrt(2), steps=math.ceil(N * math.sqrt(2)), device=device
-    )
-    theta = torch.linspace(0.01, 179.99, steps=N, device=device)
-
-    sinogram = torch.zeros((len(t), len(theta)))
-    for i, x in enumerate(t):
-        print(i)
-        for j, phi in enumerate(theta):
-            print(phi)
-            sinogram[i, j] = model.integrate_line(x, phi)
-
-    torch.save(sinogram, "integral_image.pt")
-    plt.imshow(sinogram.cpu().detach().numpy())
-    plt.show()
