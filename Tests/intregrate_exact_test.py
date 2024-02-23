@@ -11,33 +11,33 @@ from NeuralNetworks.spline import SplineNetwork
 N = 41
 
 c = 1
-sx = 0
-sy =14
-def Radon2(spline,pos_list,angles_list):
+sx = 14
+sy = 14
+
+
+def Radon2(spline, pos_list, angles_list):
     interval = torch.linspace(-1, 1, steps=len(pos_list))
     gridx, gridy = torch.meshgrid(interval, interval, indexing="ij")
     model_input = torch.stack((gridx, gridy), dim=2)
 
-    transform = torch.zeros((len(t),len(angles_list))).to(device)
+    transform = torch.zeros((len(t), len(angles_list))).to(device)
     for i, theta in enumerate(angles_list):
         # Transform degree into radians and compute rotation matrix
-        theta_rad = (theta * math.pi / 180.).to(device)
+        theta_rad = (theta * math.pi / 180.0).to(device)
         s = torch.sin(theta_rad)
         c = torch.cos(theta_rad)
-        rot = torch.stack(
-            [torch.stack([c, s]), torch.stack([-s, c])]
-        )
+        rot = torch.stack([torch.stack([c, s]), torch.stack([-s, c])])
         inp = torch.matmul(model_input, rot.T)
         model_output, _ = spline_representation(inp)
-        transform[:,i] = model_output.sum((-2,-1))
+        transform[:, i] = model_output.sum((-2, -1))
     return transform
 
 
 square_image = torch.zeros([N, N])
-square_image[N//2+sx,N//2+sy] = 1
-#square_image[N//2+1,N//2] = 1
-#lodopabImage = LodopabImage(N, pad=False)
-#square_image = lodopabImage.image
+square_image[N // 2 + sx, N // 2 + sy] = 1
+# square_image[N//2+1,N//2] = 1
+# lodopabImage = LodopabImage(N, pad=False)
+# square_image = lodopabImage.image
 spline_representation = SplineNetwork(N)
 spline_representation.weights = torch.nn.Parameter(square_image.view(-1, 1))
 
@@ -50,26 +50,13 @@ plt.imshow(model_output.view(N, N).detach().numpy())
 plt.show()
 device = "cpu"
 theta = np.linspace(0.0, 180.0, num=N)
-t = torch.linspace(
-    -math.sqrt(1), math.sqrt(1), steps=N, device=device
-) * N
+t = torch.linspace(-math.sqrt(1), math.sqrt(1), steps=N, device=device)
 theta = torch.linspace(0.0, 180.0, steps=N)
-radon = Radon2(spline_representation,t,theta)
+radon = Radon2(spline_representation, t, theta)
 plt.imshow(radon.detach().cpu().numpy())
 plt.colorbar()
 plt.show()
 
-#theta = torch.tensor([45,90+45, 90+45*3,-45])
-#theta = torch.tensor([39])
-#theta = torch.tensor([0])
-#t = torch.tensor([0.0])
-#theta = torch.tensor([45,46,47,48])
-
-theta = torch.tensor([45])
-#theta = torch.tensor([125.93299102783203])
-t = torch.tensor([t[29]])
-#theta = torch.tensor([theta[8]])
-print(t)
 
 sinogram = torch.zeros((len(t), len(theta)))
 for i, x in enumerate(t):
@@ -79,7 +66,9 @@ for i, x in enumerate(t):
 
 plt.imshow(sinogram.cpu().detach().numpy())
 ax = plt.gca()
-ax.set_xticklabels(np.linspace(theta.min().item(), theta.max().item(),10).astype(np.int16))
+ax.set_xticklabels(
+    np.linspace(theta.min().item(), theta.max().item(), 10).astype(np.int16)
+)
 plt.colorbar()
 plt.show()
 print(sinogram)
