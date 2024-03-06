@@ -8,11 +8,11 @@ from matplotlib import pyplot as plt
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 
-N = 41
+N = 10
 
 c = 1
-sx = 14
-sy = 14
+sx = 0
+sy = 0
 
 
 def Radon2(spline, pos_list, angles_list):

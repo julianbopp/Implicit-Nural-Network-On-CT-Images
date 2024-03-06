@@ -5,9 +5,11 @@ from skimage.transform import radon, rescale, iradon
 
 # image = shepp_logan_phantom()
 
-ground_truth = h5py.File("dataset/ground_truth_train/ground_truth_train_000.hdf5", "r")
+ground_truth = h5py.File(
+    "../dataset/ground_truth_train/ground_truth_train_000.hdf5", "r"
+)
 observation_test = h5py.File(
-    "dataset/observation_train/observation_train_000.hdf5", "r"
+    "../dataset/observation_train/observation_train_000.hdf5", "r"
 )
 
 # read image from hdf5 file and store in numpy array
