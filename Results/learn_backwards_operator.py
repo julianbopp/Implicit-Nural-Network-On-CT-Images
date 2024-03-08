@@ -9,7 +9,7 @@ from DatasetClasses.utils import SNR
 from DatasetClasses.utils import addGaussianNoise
 
 
-RESOLUTION = 100
+RESOLUTION = 36
 
 image_util = LodopabImage(resolution=RESOLUTION, pad=False)
 ground_truth_image = image_util.image
@@ -39,7 +39,6 @@ spline_snr = torch.zeros([len(stds)])
 siren_snr = torch.zeros([len(stds)])
 noise_snr = torch.zeros([len(stds)])
 for j in range(len(stds)):
-    print(j)
 
     spline_network = SplineNetwork(RESOLUTION)
 
