@@ -31,9 +31,9 @@ def train(ground_truth, model_output, optimizer):
 
 
 
-training_steps = 500
+training_steps = 1000
 
-stds = [0,0.001,0.01,0.02,0.03,0.04,0.05,0.06]
+stds = [0,0.001,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.1]
 
 spline_snr = torch.zeros([len(stds)])
 siren_snr = torch.zeros([len(stds)])
@@ -52,8 +52,8 @@ for j in range(len(stds)):
 
     siren_network.cuda()
 
-    optimizer_spline = torch.optim.Adam(spline_network.parameters(), lr=1e-2)
-    optimizer_siren = torch.optim.Adam(params=siren_network.parameters(), lr=1e-4)
+    optimizer_spline = torch.optim.Adam(spline_network.parameters(), lr=1e-3)
+    optimizer_siren = torch.optim.Adam(params=siren_network.parameters(), lr=1e-3)
 
     std = stds[j]
     ground_truth = torch.from_numpy(addGaussianNoise(ground_truth_image.detach().numpy(), 0, std)).view(-1)
@@ -77,11 +77,14 @@ for j in range(len(stds)):
 
     noise_snr[j] = SNR(ground_truth_image.view(-1).detach().numpy(), ground_truth.view(-1).detach().numpy())
 
-print(noise_snr.__reversed__())
-print(spline_snr)
-print(siren_snr)
-plt.plot(noise_snr, spline_snr)
-plt.plot(noise_snr, siren_snr)
+plt.figure(1)
+plt.plot(noise_snr, spline_snr, 'ro-', label="spline snr")
+plt.plot(noise_snr, siren_snr, 'b+--', label="siren snr")
+plt.xlabel("noise snr")
+plt.ylabel("fitting snr")
+plt.legend()
+plt.title("Fitting SNR over Noise SNR")
+
 plt.show()
 
 
