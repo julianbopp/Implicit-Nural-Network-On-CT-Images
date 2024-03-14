@@ -112,4 +112,21 @@ def batch_radon_siren(z, f, L, theta=None, device=None, circle=False, SIREN=True
     # f_sum = torchvision.transforms.v2.ToTensor()(f_sum)
     output = f_sum[:, :, 0]  # Shape: [len(z), len(theta)]
 
+    def Radon2(model, pos_list, angles_list):
+        interval = torch.linspace(-1, 1, steps=len(pos_list))
+        gridx, gridy = torch.meshgrid(interval, interval, indexing="ij")
+        model_input = torch.stack((gridx, gridy), dim=2)
+
+        transform = torch.zeros((len(t), len(angles_list))).to(device)
+        for i, theta in enumerate(angles_list):
+            # Transform degree into radians and compute rotation matrix
+            theta_rad = (theta * math.pi / 180.0).to(device)
+            s = torch.sin(theta_rad)
+            c = torch.cos(theta_rad)
+            rot = torch.stack([torch.stack([c, s]), torch.stack([-s, c])])
+            inp = torch.matmul(model_input, rot.T)
+            model_output, _ = model(inp)
+            transform[:, i] = model_output.sum((-2, -1))
+        return transform
+
     return output
