@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 
-N = 10
+N = 128
 
 c = 1
 sx = 0
@@ -36,8 +36,8 @@ def Radon2(spline, pos_list, angles_list):
 square_image = torch.zeros([N, N])
 square_image[N // 2 + sx, N // 2 + sy] = 1
 # square_image[N//2+1,N//2] = 1
-# lodopabImage = LodopabImage(N, pad=False)
-# square_image = lodopabImage.image
+lodopabImage = LodopabImage(N, pad=False)
+square_image = lodopabImage.image
 spline_representation = SplineNetwork(N)
 spline_representation.weights = torch.nn.Parameter(square_image.view(-1, 1))
 
@@ -51,19 +51,21 @@ plt.show()
 device = "cpu"
 theta = np.linspace(0.0, 180.0, num=N)
 t = torch.linspace(-math.sqrt(1), math.sqrt(1), steps=N, device=device)
-theta = torch.linspace(0.0, 180.0, steps=N)
-radon = Radon2(spline_representation, t, theta)
-plt.imshow(radon.detach().cpu().numpy())
-plt.colorbar()
-plt.show()
+theta = torch.linspace(0.0, 180.0, steps=180)
+#radon = Radon2(spline_representation, t, theta)
+#plt.imshow(radon.detach().cpu().numpy())
+#plt.colorbar()
+#plt.show()
 
 
-sinogram = torch.zeros((len(t), len(theta)))
+sinogram = np.zeros((len(t), len(theta)))
+#sinogram.requires_grad = False
 for i, x in enumerate(t):
     print(i)
     for j, phi in enumerate(theta):
-        sinogram[i, j] = spline_representation.integrate_line(x, phi)
+        sinogram[i, j] = spline_representation.integrate_line(x, phi).detach().numpy()
 
+sinogram = torch.from_numpy(sinogram)
 plt.imshow(sinogram.cpu().detach().numpy())
 ax = plt.gca()
 ax.set_xticklabels(
