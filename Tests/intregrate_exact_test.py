@@ -38,7 +38,7 @@ square_image[N // 2 + sx, N // 2 + sy] = 1
 # square_image[N//2+1,N//2] = 1
 lodopabImage = LodopabImage(N, pad=False)
 square_image = lodopabImage.image
-spline_representation = SplineNetwork(N)
+spline_representation = SplineNetwork(N, circle=True)
 spline_representation.weights = torch.nn.Parameter(square_image.view(-1, 1))
 
 
@@ -63,7 +63,10 @@ sinogram = np.zeros((len(t), len(theta)))
 for i, x in enumerate(t):
     print(i)
     for j, phi in enumerate(theta):
-        sinogram[i, j] = spline_representation.integrate_line(x, phi).detach().numpy()
+        tmp = spline_representation.integrate_line(x,phi)
+        if torch.is_tensor(tmp):
+            tmp = tmp.detach().numpy()
+        sinogram[i, j] = tmp
 
 sinogram = torch.from_numpy(sinogram)
 plt.imshow(sinogram.cpu().detach().numpy())

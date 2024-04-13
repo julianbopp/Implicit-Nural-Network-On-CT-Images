@@ -89,7 +89,7 @@ def batch_radon_siren(z, f, L, theta=None, device=None, circle=False, SIREN=True
     mgrid_rot = mgrid_rot.view(len(theta), len(z), L, 2)
     mgrid_rot = mgrid_rot.permute(1, 0, 2, 3)
 
-    mask = (torch.linalg.norm(mgrid_rot, ord=float("inf"), dim=3) <= 1).unsqueeze(3)
+    #mask = (torch.linalg.norm(mgrid_rot, ord=float("inf"), dim=3) <= 1).unsqueeze(3)
 
     # Reshape mgrid_rot such that it only has one batch dimension
     # i.e. the angle and coord batch dimension will be reduced from 2 to 1
@@ -100,7 +100,7 @@ def batch_radon_siren(z, f, L, theta=None, device=None, circle=False, SIREN=True
 
     f_out, _ = f(mgrid_rot)
     f_out = f_out.reshape(old_shape[0], old_shape[1], old_shape[2], 1)
-    f_out = mask * f_out  # Shape: [len(z), len(theta), L, 1]
+    #f_out = mask * f_out  # Shape: [len(z), len(theta), L, 1]
 
     f_sum = torch.sum(f_out, dim=2)  # Shape: [len(z), len(theta), 1]
 
