@@ -26,7 +26,7 @@ class AngleSet(Dataset):
         if rad:
             self.angles = linspace(0, self.pi, steps=L)
         else:
-            self.angles = arange(0, L, 1)
+            self.angles = linspace(0, 180, steps=L)
 
     def __len__(self):
         return len(self.angles)
