@@ -13,14 +13,14 @@ class LodopabImage(Dataset):
     """Loads a single image from the LoDoPaB-CT dataset and makes pixel batching possible"""
 
     def __init__(
-        self, resolution, set="ground_truth_train", pos1="000", pos2=0, pad=True, device="cpu"
+        self, resolution, base="", set="ground_truth_train", pos1="000", pos2=0, pad=True, device="cpu"
     ):
         self.circle = True if pad else False
         self.device = device
 
         # self.device = "cpu"
         self.resolution = resolution
-        self.image_path = f"../dataset/{set}/{set}_{pos1}.hdf5"
+        self.image_path = f"{base}../dataset/{set}/{set}_{pos1}.hdf5"
         self.image = self.read_hdf5(self.image_path)[pos2, :, :]
         # Shape: [362, 362]
         self.transform = transforms.Compose(
@@ -155,7 +155,7 @@ class LodopabImage(Dataset):
         )
         f = self.sample_image
         L = self.padded_resolution
-        theta = -torch.arange(0, 180, step=1, device=self.device)
+        theta = torch.arange(0, 180, step=1, device=self.device) + 90
 
         radon_transform = batch_radon_siren(
             z, f, L, theta, self.device, circle=self.circle
