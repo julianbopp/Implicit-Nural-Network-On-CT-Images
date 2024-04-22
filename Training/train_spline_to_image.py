@@ -25,15 +25,17 @@ sampled_ground_truth, _ = lodopabSet.sample_image(
 )
 
 sampled_ground_truth = sampled_ground_truth.squeeze().unsqueeze(-1).cpu()
-training_steps = 100
+training_steps = 1000
 spline_network.train()
 for step in range(training_steps):
     print(f"training step: {step}")
     model_output, _ = spline_network(model_input)
+    print(f"shape: {model_input.shape}")
 
     loss = (abs(model_output.unsqueeze(1) - sampled_ground_truth) ** 2).mean()
     print(loss.item())
     loss.backward()
+    print(spline_network.weights.grad)
     optim.step()
     optim.zero_grad()
     if step % 100 == 0:

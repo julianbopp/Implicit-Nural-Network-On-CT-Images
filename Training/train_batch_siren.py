@@ -10,7 +10,7 @@ from RadonTransform.radon_transform import batch_radon_siren
 CUDA = torch.cuda.is_available()
 device = torch.device("cuda") if CUDA else torch.device("cpu")
 
-RESOLUTION = 361
+RESOLUTION = 182
 CIRCLE = True
 
 lodopabImage = LodopabImage(RESOLUTION)
@@ -30,7 +30,7 @@ optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
 
 # Get ground truth radon image
 ground_truth = lodopabImage.get_radon_transform()
-model_input = lodopabImage.get_mgrid(RESOLUTION)
+model_input = lodopabImage.coords
 model_input = model_input.to(device)
 angleSet = AngleSet(180, rad=False)
 if CUDA:
@@ -70,10 +70,10 @@ for step in range(training_steps):
 
             gridx, gridy = torch.meshgrid(reshaped_angles, coords, indexing="xy")
             grid = torch.stack((gridx, gridy), dim=2)
-            sampled_radon, _ = lodopabImage.sample_radon(grid.unsqueeze(0))
+            sampled_radon, _ = lodopabImage.sample_radon(grid.unsqueeze(0).to("cpu"))
             sampled_radon = sampled_radon.squeeze()
 
-            loss = ((radon_output - sampled_radon) ** 2).mean() * 10000
+            loss = ((radon_output.cpu() - sampled_radon.cpu()) ** 2).mean()
             loss_total.append(loss.item())
 
             optim.zero_grad()

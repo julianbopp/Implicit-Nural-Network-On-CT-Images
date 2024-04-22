@@ -2,16 +2,17 @@
 import torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
-from torchmetrics.audio import SignalNoiseRatio
+from DatasetClasses.utils import SNR
 
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.spline import SplineNetwork
 from RadonTransform.radon_transform import batch_radon_siren
 
-N = 256
+N = 128
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = "cpu"
 CIRCLE = True
 
 lodopabSet = LodopabImage(N, pad=CIRCLE)
@@ -28,7 +29,7 @@ spline_network = spline_network.to(device)
 
 angleSet = AngleSet(180, rad=False)
 angleSet.angles = angleSet.angles.to(device)
-angleLoader = DataLoader(angleSet, batch_size=18, shuffle=True)
+angleLoader = DataLoader(angleSet, batch_size=180, shuffle=True)
 
 coordSet = CoordSet(padded_N, circle=CIRCLE)
 coordSet.coords = coordSet.coords.to(device)
@@ -49,11 +50,11 @@ for step in range(training_steps):
         plt.show()
         plt.imshow(image.reshape(padded_N, padded_N).cpu().detach().numpy())
         plt.show()
-        snr = SignalNoiseRatio()
+        snr = SNR
         print(
             snr(
-                model_output.view(-1, 1).squeeze().cpu(),
-                image.view(-1, 1).squeeze().cpu(),
+                model_output.view(-1, 1).squeeze().detach().cpu(),
+                image.view(-1, 1).squeeze().detach().cpu(),
             )
         )
     for angle, angle_idx in angleLoader:

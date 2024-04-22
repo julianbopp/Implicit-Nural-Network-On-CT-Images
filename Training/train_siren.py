@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from skimage.transform import radon, iradon
 from torch.utils.data import DataLoader
-from torchmetrics.audio import SignalNoiseRatio
+from DatasetClasses.utils import SNR
 
 from DatasetClasses.lodopabimage import LodopabImage
 from NeuralNetworks.siren import Siren
@@ -28,7 +28,7 @@ steps_til_summary = 50
 
 optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
 
-dataset = LodopabImage(resolution)
+dataset = LodopabImage(resolution, pad=False)
 dataloader = DataLoader(dataset, batch_size=dataset.__len__())
 
 print(dataset.get_2d_np().shape)
@@ -70,7 +70,7 @@ def train():
         loss.backward()
         optim.step()
 
-    snr = SignalNoiseRatio().cuda()
+    snr = SNR
     print(snr(model_output, ground_truth))
 
     fig, axes = plt.subplots(2, 2, figsize=(18, 6))
