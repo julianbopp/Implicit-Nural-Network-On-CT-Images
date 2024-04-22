@@ -33,7 +33,7 @@ class SplineNetwork(nn.Module):
         super().__init__()
 
         self.N = N
-        self.weights = torch.zeros(N, N, requires_grad=True)
+        self.weights = 1/9*torch.ones(N, N, requires_grad=True)
         self.weights = self.weights.reshape(-1, 1)
         self.weights = nn.Parameter(self.weights)
 
@@ -57,7 +57,7 @@ class SplineNetwork(nn.Module):
 
         device = x.device
 
-        self.weights = self.weights.to(device)
+        #self.weights = torch.nn.Parameter(self.weights.to(device))
         self.control_points = self.control_points.to(device)
 
         old_shape = x.shape
