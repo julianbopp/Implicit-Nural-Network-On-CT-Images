@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import torch
 from skimage.transform import radon
 from torch.utils.data import DataLoader
-from torchmetrics.audio import SignalNoiseRatio
 
 from DatasetClasses.ParameterSet import AngleSet, CoordSet
 from DatasetClasses.lodopabimage import LodopabImage
@@ -72,7 +71,3 @@ plt.imshow(model_output1)
 plt.show()
 plt.imshow(model_output2.view(363, 180).detach().numpy())
 plt.show()
-snr = SignalNoiseRatio()
-print(snr(batch_radon_output.cpu(), torch.from_numpy(model_output1)))
-print(snr(batch_radon_output.cpu(), (model_output2.view(L, 180))))
-print(snr(torch.from_numpy(model_output1), (model_output2.view(L, 180))))
